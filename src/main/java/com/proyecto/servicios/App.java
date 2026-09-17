@@ -1,5 +1,6 @@
 package com.proyecto.servicios;
 
+import com.proyecto.servicios.util.DotEnvLoader;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.CommandLineRunner;
@@ -27,6 +28,7 @@ public class App implements CommandLineRunner {
 
 
     public static void main(String[] args) {
+        DotEnvLoader.cargarSiExiste();
         SpringApplication.run(App.class, args);
     }
 

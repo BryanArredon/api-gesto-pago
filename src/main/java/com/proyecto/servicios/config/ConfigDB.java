@@ -28,7 +28,8 @@ import java.util.Map;
 @EnableJpaRepositories(
         basePackages = {
                 "com.proyecto.servicios.repositorys.sf",
-                "com.proyecto.servicios.repositorys.gestopago"
+                "com.proyecto.servicios.repositorys.gestopago",
+                "com.proyecto.servicios.repositorys.auth"
         },
         transactionManagerRef = "sfTransactionManager",
         entityManagerFactoryRef = "sfEntityManagerFactory"
@@ -41,7 +42,13 @@ public class ConfigDB {
     public DataSource sfDatasource(){
         HikariConfig config=new HikariConfig();
         try{
-            config.setJdbcUrl(env.getProperty("spring.datasource.url"));
+            String url = env.getProperty("spring.datasource.url");
+            String schema = env.getProperty("spring.flyway.schemas");
+            if (url != null && schema != null && !schema.isBlank() && !url.contains("currentSchema=")) {
+                String sep = url.contains("?") ? "&" : "?";
+                url = url + sep + "currentSchema=" + schema;
+            }
+            config.setJdbcUrl(url);
             config.setPassword(env.getProperty("spring.datasource.password"));
             config.setUsername(env.getProperty("spring.datasource.username"));
             config.setMaximumPoolSize(10);
@@ -67,7 +74,8 @@ public class ConfigDB {
           em.setDataSource(sfDatasource());
           em.setPackagesToScan(
                   "com.proyecto.servicios.entity.sf",
-                  "com.proyecto.servicios.entity.gestopago"
+                  "com.proyecto.servicios.entity.gestopago",
+                  "com.proyecto.servicios.entity.auth"
           );
           em.setPersistenceUnitName("sfDatasource");
             HibernateJpaVendorAdapter vendorAdapter = new HibernateJpaVendorAdapter();
@@ -76,7 +84,7 @@ public class ConfigDB {
           properties.put("hibernate.hbm2ddl.auto", "none");
             properties.put("hibernate.show-sql", false);
             properties.put("hibernate.dialect", "org.hibernate.dialect.PostgreSQLDialect");
-            properties.put("hibernate.default_schema", "gestor_pagos");
+            properties.put("hibernate.default_schema", env.getProperty("spring.flyway.schemas", "public"));
             properties.put("jakarta.persistence.query.timeout", 600000);
 
 
