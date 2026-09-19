@@ -1,0 +1,15 @@
+services:
+  postgres-it:
+    image: postgres:16-alpine
+    container_name: prueba-postgres
+    environment:
+      POSTGRES_DB: prueba_it
+      POSTGRES_USER: prueba
+      POSTGRES_PASSWORD: prueba123
+    ports:
+      - "5434:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U prueba -d prueba_it"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
