@@ -43,4 +43,28 @@ public class ApiException extends RuntimeException {
         return new ApiException(ErrorCodes.RATE_001,
                 "Demasiadas peticiones, intente mas tarde", HttpStatus.TOO_MANY_REQUESTS);
     }
+
+    public static ApiException emailYaRegistrado() {
+        return new ApiException(ErrorCodes.AUTH_006, "El correo ya esta registrado", HttpStatus.CONFLICT);
+    }
+
+    public static ApiException referenciaInvalida() {
+        return new ApiException(ErrorCodes.PAGO_001, "La referencia no es valida", HttpStatus.UNPROCESSABLE_ENTITY);
+    }
+
+    public static ApiException referenciaNoVerificable() {
+        return new ApiException(ErrorCodes.PAGO_002, "El servicio no soporta verificacion de referencia", HttpStatus.UNPROCESSABLE_ENTITY);
+    }
+
+    public static ApiException productoNoDisponible() {
+        return new ApiException(ErrorCodes.PAGO_003, "El producto no esta disponible en el catalogo", HttpStatus.UNPROCESSABLE_ENTITY);
+    }
+
+    public static ApiException montoInvalido() {
+        return new ApiException(ErrorCodes.PAGO_004, "El monto es invalido", HttpStatus.UNPROCESSABLE_ENTITY);
+    }
+
+    public static ApiException confirmacionNoPermitida() {
+        return new ApiException(ErrorCodes.PAGO_005, "La transaccion no esta en estado de confirmacion", HttpStatus.CONFLICT);
+    }
 }

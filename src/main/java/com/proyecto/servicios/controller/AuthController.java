@@ -2,6 +2,7 @@ package com.proyecto.servicios.controller;
 
 import com.proyecto.servicios.model.auth.LoginRequest;
 import com.proyecto.servicios.model.auth.RefreshRequest;
+import com.proyecto.servicios.model.auth.RegisterRequest;
 import com.proyecto.servicios.model.auth.TokenResponse;
 import com.proyecto.servicios.service.AuthService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -30,6 +31,12 @@ public class AuthController {
     public ResponseEntity<TokenResponse> login(@Valid @RequestBody LoginRequest request) {
         TokenResponse response = authService.login(request);
         return ResponseEntity.ok(response);
+    }
+
+    @PostMapping("/register")
+    @Operation(summary = "Registrar un nuevo usuario")
+    public ResponseEntity<TokenResponse> register(@Valid @RequestBody RegisterRequest request) {
+        return ResponseEntity.ok(authService.register(request));
     }
 
     @PostMapping("/refresh")

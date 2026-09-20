@@ -7,8 +7,10 @@ import com.proyecto.servicios.entity.auth.Usuario;
 import com.proyecto.servicios.exception.ApiException;
 import com.proyecto.servicios.model.auth.LoginRequest;
 import com.proyecto.servicios.model.auth.RefreshRequest;
+import com.proyecto.servicios.model.auth.RegisterRequest;
 import com.proyecto.servicios.model.auth.TokenResponse;
 import com.proyecto.servicios.repositorys.auth.RefreshTokenRepository;
+import com.proyecto.servicios.repositorys.auth.RolRepository;
 import com.proyecto.servicios.repositorys.auth.UsuarioRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -45,6 +47,9 @@ class AuthServiceImplTest {
     @Mock
     private RefreshTokenRepository refreshTokenRepository;
 
+    @Mock
+    private RolRepository rolRepository;
+
     private final PasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
     private final JwtService jwtService = new JwtService(SECRET, "test-issuer", 15);
     private AuthServiceImpl service;
@@ -54,7 +59,7 @@ class AuthServiceImplTest {
     @BeforeEach
     void setUp() {
         service = new AuthServiceImpl(usuarioRepository, refreshTokenRepository,
-                passwordEncoder, jwtService, 7);
+                rolRepository, passwordEncoder, jwtService, 7);
         admin = new Usuario();
         admin.setId(1L);
         admin.setEmail("admin@test.com");
@@ -195,5 +200,54 @@ class AuthServiceImplTest {
     void logoutNullEsInofensivo() {
         service.logout(null);
         verify(refreshTokenRepository, never()).findByTokenHash(any());
+    }
+
+    @Test
+    void registerExitosoDevuelveTokensYAsignaRolCliente() {
+        Rol rolCliente = new Rol();
+        rolCliente.setNombre("CLIENTE");
+        when(usuarioRepository.findByEmail("nuevo@test.com")).thenReturn(Optional.empty());
+        when(rolRepository.findByNombre("CLIENTE")).thenReturn(Optional.of(rolCliente));
+        when(usuarioRepository.save(any(Usuario.class))).thenAnswer(inv -> {
+            Usuario u = inv.getArgument(0);
+            u.setId(2L);
+            return u;
+        });
+        when(refreshTokenRepository.save(any(RefreshToken.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+
+        RegisterRequest request = new RegisterRequest();
+        request.setEmail("Nuevo@Test.com");
+        request.setNombre("Cliente Nuevo");
+        request.setPassword("S3cretoCliente!");
+
+        TokenResponse response = service.register(request);
+
+        assertNotNull(response.getAccessToken());
+        assertNotNull(response.getRefreshToken());
+        assertTrue(response.getRoles().contains("CLIENTE"));
+        assertEquals("Cliente Nuevo", response.getNombre());
+
+        ArgumentCaptor<Usuario> captor = ArgumentCaptor.forClass(Usuario.class);
+        verify(usuarioRepository).save(captor.capture());
+        Usuario guardado = captor.getValue();
+        assertEquals("nuevo@test.com", guardado.getEmail());
+        assertTrue(passwordEncoder.matches("S3cretoCliente!", guardado.getPasswordHash()));
+        assertTrue(guardado.getRoles().stream().anyMatch(r -> "CLIENTE".equals(r.getNombre())));
+    }
+
+    @Test
+    void registerConEmailExistenteDevuelveConflicto() {
+        when(usuarioRepository.findByEmail("nuevo@test.com")).thenReturn(Optional.of(admin));
+
+        RegisterRequest request = new RegisterRequest();
+        request.setEmail("Nuevo@Test.com");
+        request.setNombre("Cliente Nuevo");
+        request.setPassword("S3cretoCliente!");
+
+        ApiException error = assertThrows(ApiException.class, () -> service.register(request));
+        assertEquals("AUTH-006", error.getCode());
+        verify(rolRepository, never()).findByNombre(any());
+        verify(usuarioRepository, never()).save(any());
     }
 }
