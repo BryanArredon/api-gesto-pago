@@ -2,12 +2,15 @@ package com.proyecto.servicios.service.Impl;
 
 import com.proyecto.servicios.config.security.JwtService;
 import com.proyecto.servicios.entity.auth.RefreshToken;
+import com.proyecto.servicios.entity.auth.Rol;
 import com.proyecto.servicios.entity.auth.Usuario;
 import com.proyecto.servicios.exception.ApiException;
 import com.proyecto.servicios.model.auth.LoginRequest;
 import com.proyecto.servicios.model.auth.RefreshRequest;
+import com.proyecto.servicios.model.auth.RegisterRequest;
 import com.proyecto.servicios.model.auth.TokenResponse;
 import com.proyecto.servicios.repositorys.auth.RefreshTokenRepository;
+import com.proyecto.servicios.repositorys.auth.RolRepository;
 import com.proyecto.servicios.repositorys.auth.UsuarioRepository;
 import com.proyecto.servicios.service.AuthService;
 import lombok.extern.slf4j.Slf4j;
@@ -19,6 +22,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 @Service
@@ -27,6 +31,7 @@ public class AuthServiceImpl implements AuthService {
 
     private final UsuarioRepository usuarioRepository;
     private final RefreshTokenRepository refreshTokenRepository;
+    private final RolRepository rolRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final long refreshTtlDays;
@@ -34,11 +39,13 @@ public class AuthServiceImpl implements AuthService {
 
     public AuthServiceImpl(UsuarioRepository usuarioRepository,
                            RefreshTokenRepository refreshTokenRepository,
+                           RolRepository rolRepository,
                            PasswordEncoder passwordEncoder,
                            JwtService jwtService,
                            @Value("${security.jwt.refresh-ttl-days}") long refreshTtlDays) {
         this.usuarioRepository = usuarioRepository;
         this.refreshTokenRepository = refreshTokenRepository;
+        this.rolRepository = rolRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
         this.refreshTtlDays = refreshTtlDays;
@@ -65,6 +72,32 @@ public class AuthServiceImpl implements AuthService {
         String access = jwtService.generarAccessToken(usuario);
         String refresh = guardarRefreshToken(usuario);
         log.info("Login exitoso email={}", usuario.getEmail());
+        return TokenResponse.ok(access, refresh, jwtService.getAccessTtlSegundos(),
+                usuario.getNombre(), roles(usuario));
+    }
+
+    @Override
+    @Transactional
+    public TokenResponse register(RegisterRequest request) {
+        String email = request.getEmail();
+        if (usuarioRepository.findByEmail(email).isPresent()) {
+            throw ApiException.emailYaRegistrado();
+        }
+        Rol rolCliente = rolRepository.findByNombre("CLIENTE")
+                .orElseThrow(() -> new IllegalStateException(
+                        "No existe el rol CLIENTE. Revisar la migracion R__seed_roles.sql"));
+
+        Usuario usuario = new Usuario();
+        usuario.setEmail(email);
+        usuario.setNombre(request.getNombre());
+        usuario.setPasswordHash(passwordEncoder.encode(request.getPassword()));
+        usuario.setActivo(true);
+        usuario.setRoles(Set.of(rolCliente));
+        usuarioRepository.save(usuario);
+
+        String access = jwtService.generarAccessToken(usuario);
+        String refresh = guardarRefreshToken(usuario);
+        log.info("Registro exitoso email={}", email);
         return TokenResponse.ok(access, refresh, jwtService.getAccessTtlSegundos(),
                 usuario.getNombre(), roles(usuario));
     }
