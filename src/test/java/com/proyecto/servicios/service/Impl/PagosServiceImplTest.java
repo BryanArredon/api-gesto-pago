@@ -48,19 +48,25 @@ class PagosServiceImplTest {
 
     private static final String XML_SENDTX_EXITO = """
             <?xml version='1.0' encoding='UTF-8'?>
-            <RESPONSE>
+            <AUTORIZACION>
                 <ID_TX>1975170643</ID_TX>
                 <NUM_AUTORIZACION>100048015</NUM_AUTORIZACION>
                 <SALDO>30484.32</SALDO>
                 <COMISION>6.0</COMISION>
                 <FECHA>12/Mar/2024 15:10:48</FECHA>
                 <MONTO>701.99</MONTO>
-                <MENSAJE>
-                    <CODIGO>01</CODIGO>
-                    <TEXTO>Operacion realizada con exito</TEXTO>
-                    <REFERENCIA>25720381</REFERENCIA>
-                </MENSAJE>
-            </RESPONSE>
+                <CODIGO_MENSAJE>01</CODIGO_MENSAJE>
+                <MENSAJE>Operacion realizada con exito</MENSAJE>
+                <REFERENCIA>25720381</REFERENCIA>
+            </AUTORIZACION>
+            """;
+    private static final String XML_SENDTX_CARRIER_DOWN = """
+            <?xml version='1.0' encoding='UTF-8'?>
+            <AUTORIZACION> <NUM_AUTORIZACION>-1</NUM_AUTORIZACION><CODIGO_MENSAJE>03</CODIGO_MENSAJE><MENSAJE>Por el momento el carrier no responde, favor de intentar mas tarde.</MENSAJE></AUTORIZACION>
+            """;
+    private static final String XML_CONFIRM_DISPOSITIVO_NO_REGISTRADO = """
+            <?xml version='1.0' encoding='UTF-8'?>
+            <RESPONSE> <NUM_AUTORIZACION>-1</NUM_AUTORIZACION><MENSAJE><CODIGO>51</CODIGO><TEXTO>Dispositivo no registrado</TEXTO></MENSAJE></RESPONSE>
             """;
     private static final String XML_CONFIRM_EXITO = """
             <?xml version='1.0' encoding='UTF-8'?>
@@ -349,18 +355,37 @@ class PagosServiceImplTest {
         when(gestoPagoTxClient.sendTx(anyString(), any()))
                 .thenReturn("""
                         <?xml version='1.0' encoding='UTF-8'?>
-                        <RESPONSE>
-                            <MENSAJE>
-                                <CODIGO>82</CODIGO>
-                                <TEXTO>Timeout alcanzado, transaccion no registrada</TEXTO>
-                            </MENSAJE>
-                        </RESPONSE>
+                        <AUTORIZACION>
+                            <NUM_AUTORIZACION>-1</NUM_AUTORIZACION>
+                            <CODIGO_MENSAJE>82</CODIGO_MENSAJE>
+                            <MENSAJE>Timeout alcanzado, transaccion no registrada</MENSAJE>
+                        </AUTORIZACION>
                         """);
 
         TransaccionDto dto = service.crearTransaccion(1L, pago(recarga(), "5577777777", null));
 
         assertEquals("EN_PROCESO", dto.getEstado());
         assertTrue(dto.getErrorMensaje().contains("Timeout"));
+    }
+
+    @Test
+    void crearConCarrierNoRespondeMarcaFallida() {
+        when(catalogoConsulta.buscarActivo(76, 205)).thenReturn(Optional.of(recarga()));
+        when(transaccionRepository.findByUsuarioIdAndIdempotencyKey(1L, "clave-idem-123"))
+                .thenReturn(Optional.empty());
+        when(transaccionRepository.save(any(Transaccion.class))).thenAnswer(inv -> {
+            Transaccion t = inv.getArgument(0);
+            t.setId(14L);
+            t.setCreatedAt(Instant.now());
+            t.setUpdatedAt(Instant.now());
+            return t;
+        });
+        when(gestoPagoTxClient.sendTx(anyString(), any())).thenReturn(XML_SENDTX_CARRIER_DOWN);
+
+        TransaccionDto dto = service.crearTransaccion(1L, pago(recarga(), "5577777777", null));
+
+        assertEquals("FALLIDA", dto.getEstado());
+        assertTrue(dto.getErrorMensaje().contains("carrier no responde"));
     }
 
     @Test
@@ -378,13 +403,11 @@ class PagosServiceImplTest {
         when(gestoPagoTxClient.sendTx(anyString(), any()))
                 .thenReturn("""
                         <?xml version='1.0' encoding='UTF-8'?>
-                        <RESPONSE>
+                        <AUTORIZACION>
                             <NUM_AUTORIZACION>100057766</NUM_AUTORIZACION>
-                            <MENSAJE>
-                                <CODIGO>06</CODIGO>
-                                <TEXTO>Upc ya fue registrado</TEXTO>
-                            </MENSAJE>
-                        </RESPONSE>
+                            <CODIGO_MENSAJE>06</CODIGO_MENSAJE>
+                            <MENSAJE>Upc ya fue registrado</MENSAJE>
+                        </AUTORIZACION>
                         """);
 
         TransaccionDto dto = service.crearTransaccion(1L, pago(recarga(), "5577777777", null));
@@ -438,6 +461,23 @@ class PagosServiceImplTest {
 
         assertEquals("FALLIDA", dto.getEstado());
         assertTrue(dto.getErrorMensaje().contains("no fue aplicada"));
+    }
+
+    @Test
+    void confirmarDispositivoNoRegistradoMarcaFallida() {
+        when(catalogoConsulta.buscarActivo(76, 205)).thenReturn(Optional.of(recarga()));
+        Transaccion tx = transaccion(76, 205, EstadoTransaccion.EN_PROCESO, "clave-idem-123");
+        tx.setId(24L);
+        tx.setCreatedAt(Instant.now().minusSeconds(120));
+        when(transaccionRepository.findByIdAndUsuarioId(24L, 1L)).thenReturn(Optional.of(tx));
+        when(transaccionRepository.save(any(Transaccion.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(gestoPagoTxClient.confirmTx(anyString(), any()))
+                .thenReturn(XML_CONFIRM_DISPOSITIVO_NO_REGISTRADO);
+
+        TransaccionDto dto = service.confirmarTransaccion(1L, 24L);
+
+        assertEquals("FALLIDA", dto.getEstado());
+        assertEquals("Dispositivo no registrado", dto.getErrorMensaje());
     }
 
     @Test
