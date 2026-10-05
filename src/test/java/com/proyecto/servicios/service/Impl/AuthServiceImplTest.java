@@ -27,6 +27,7 @@ import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -148,7 +149,7 @@ class AuthServiceImplTest {
 
         assertTrue(token.getRevocado());
         assertNotNull(response.getRefreshToken());
-        assertFalse(response.getRefreshToken().equals("refresh-viejo"));
+        assertNotEquals("refresh-viejo", response.getRefreshToken());
         verify(refreshTokenRepository, atMost(3)).save(any(RefreshToken.class));
     }
 

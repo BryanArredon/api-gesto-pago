@@ -7,18 +7,18 @@ import com.proyecto.servicios.model.PersonaResponse;
 import com.proyecto.servicios.model.PersonasRequest;
 import com.proyecto.servicios.repositorys.sf.PersonasRepository;
 import com.proyecto.servicios.service.PersonaService;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.Optional;
 
 @Service
 @Slf4j
+@RequiredArgsConstructor
 public class PersonasServiceImpl implements PersonaService {
-    @Autowired
-    private PersonasRepository personasRepository;
+    private final PersonasRepository personasRepository;
     @Override
     public PersonaResponse creaPersona(PersonasRequest personasRequest) {
         PersonaResponse person=new PersonaResponse();

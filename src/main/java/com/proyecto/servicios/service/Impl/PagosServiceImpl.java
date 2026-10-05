@@ -20,9 +20,7 @@ import com.proyecto.servicios.service.BloqueoIdempotencia;
 import com.proyecto.servicios.service.CatalogoConsulta;
 import com.proyecto.servicios.service.GestoPagoTokenService;
 import com.proyecto.servicios.service.PagosService;
-import jakarta.xml.bind.JAXBContext;
-import jakarta.xml.bind.JAXBException;
-import jakarta.xml.bind.Unmarshaller;
+import javax.xml.parsers.DocumentBuilderFactory;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
@@ -47,6 +45,11 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 
+import org.w3c.dom.Document;
+import org.w3c.dom.Element;
+import org.w3c.dom.NodeList;
+import org.xml.sax.InputSource;
+
 @Service
 @Slf4j
 public class PagosServiceImpl implements PagosService {
@@ -55,6 +58,7 @@ public class PagosServiceImpl implements PagosService {
     private static final String CODIGO_DUPLICADO = "06";
     private static final String CODIGO_TIMEOUT = "82";
     private static final String NO_AUTORIZACION = "-1";
+    private static final String ORIGEN_PROVEEDOR = "PROVEEDOR";
     private static final DateTimeFormatter HORA_LOCAL =
             DateTimeFormatter.ofPattern("yyyyMMddHHmmss").withZone(ZoneId.systemDefault());
     private static final DateTimeFormatter ZONA_HORARIA =
@@ -134,7 +138,7 @@ public class PagosServiceImpl implements PagosService {
         }
 
         Transaccion transaccion = prepararTransaccion(existente.orElse(null), usuarioId, producto,
-                request.getReferencia(), monto, request.getIdempotencyKey(), clave);
+                request.getReferencia(), monto, request.getIdempotencyKey());
         registrarEvento(transaccion.getId(), EstadoTransaccion.PENDIENTE, "API",
                 "Transaccion registrada para envio al proveedor");
 
@@ -200,8 +204,7 @@ public class PagosServiceImpl implements PagosService {
     }
 
     private Transaccion prepararTransaccion(Transaccion previa, Long usuarioId, CatalogoProductoCache producto,
-                                            String referencia, BigDecimal monto, String idempotencyKey,
-                                            ClaveIdempotencia clave) {
+                                            String referencia, BigDecimal monto, String idempotencyKey) {
         Transaccion transaccion = previa != null ? previa : new Transaccion();
         if (transaccion.getId() == null) {
             transaccion.setUsuarioId(usuarioId);
@@ -227,18 +230,18 @@ public class PagosServiceImpl implements PagosService {
         String texto = mensaje == null ? "El proveedor rechazo la operacion" : mensaje.getTexto();
         if (CODIGO_EXITO.equals(codigo) || esDuplicadoAplicado(respuesta)) {
             aplicarDatosExito(transaccion, respuesta);
-            cambiarEstado(transaccion, EstadoTransaccion.APROBADA, "PROVEEDOR",
+            cambiarEstado(transaccion, EstadoTransaccion.APROBADA, ORIGEN_PROVEEDOR,
                     mensaje == null ? "Operacion realizada con exito" : texto);
             return;
         }
         if (CODIGO_TIMEOUT.equals(codigo)) {
             transaccion.setErrorMensaje(texto);
-            cambiarEstado(transaccion, EstadoTransaccion.EN_PROCESO, "PROVEEDOR",
+            cambiarEstado(transaccion, EstadoTransaccion.EN_PROCESO, ORIGEN_PROVEEDOR,
                     "Resultado incierto; se confirmara contra el proveedor despues");
             return;
         }
         transaccion.setErrorMensaje(texto);
-        cambiarEstado(transaccion, EstadoTransaccion.FALLIDA, "PROVEEDOR", texto);
+        cambiarEstado(transaccion, EstadoTransaccion.FALLIDA, ORIGEN_PROVEEDOR, texto);
     }
 
     private void aplicarResultadoConfirmTx(Transaccion transaccion, GestoPagoOperacionResponse respuesta) {
@@ -247,11 +250,11 @@ public class PagosServiceImpl implements PagosService {
         String texto = mensaje == null ? "Sin mensaje del proveedor" : mensaje.getTexto();
         if (CODIGO_EXITO.equals(codigo) || CODIGO_DUPLICADO.equals(codigo)) {
             aplicarDatosExito(transaccion, respuesta);
-            cambiarEstado(transaccion, EstadoTransaccion.APROBADA, "PROVEEDOR", texto);
+            cambiarEstado(transaccion, EstadoTransaccion.APROBADA, ORIGEN_PROVEEDOR, texto);
             return;
         }
         transaccion.setErrorMensaje(texto);
-        cambiarEstado(transaccion, EstadoTransaccion.FALLIDA, "PROVEEDOR", texto);
+        cambiarEstado(transaccion, EstadoTransaccion.FALLIDA, ORIGEN_PROVEEDOR, texto);
     }
 
     private boolean esDuplicadoAplicado(GestoPagoOperacionResponse respuesta) {
@@ -335,12 +338,57 @@ public class PagosServiceImpl implements PagosService {
 
     private GestoPagoOperacionResponse parsear(String xml) {
         try {
-            JAXBContext context = JAXBContext.newInstance(GestoPagoOperacionResponse.class);
-            Unmarshaller unmarshaller = context.createUnmarshaller();
-            return (GestoPagoOperacionResponse) unmarshaller.unmarshal(new StringReader(xml));
-        } catch (JAXBException e) {
+            DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+            factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
+            factory.setNamespaceAware(false);
+            factory.setExpandEntityReferences(false);
+            Document doc = factory.newDocumentBuilder().parse(new InputSource(new StringReader(xml)));
+            doc.getDocumentElement().normalize();
+
+            GestoPagoOperacionResponse respuesta = new GestoPagoOperacionResponse();
+            respuesta.setIdTx(texto(doc, "ID_TX"));
+            respuesta.setNumAutorizacion(texto(doc, "NUM_AUTORIZACION"));
+            respuesta.setSaldo(texto(doc, "SALDO"));
+            respuesta.setComision(texto(doc, "COMISION"));
+            respuesta.setFecha(texto(doc, "FECHA"));
+            respuesta.setMonto(texto(doc, "MONTO"));
+            respuesta.setMensaje(mensajeDe(doc));
+            return respuesta;
+        } catch (Exception e) {
             throw new IllegalStateException("Error al interpretar la respuesta de GestoPago", e);
         }
+    }
+
+    private GestoPagoMensajeOperacion mensajeDe(Document doc) {
+        GestoPagoMensajeOperacion mensaje = new GestoPagoMensajeOperacion();
+        mensaje.setCodigo(primeroNoVacio(texto(doc, "CODIGO_MENSAJE"), texto(doc, "CODIGO")));
+        mensaje.setTexto(textoDeMensaje(doc.getElementsByTagName("MENSAJE")));
+        mensaje.setSaldo(texto(doc, "SALDO"));
+        mensaje.setReferencia(texto(doc, "REFERENCIA"));
+        mensaje.setIdTx(texto(doc, "ID_TX"));
+        mensaje.setPin(texto(doc, "PIN"));
+        mensaje.setLegend(primeroNoVacio(texto(doc, "LEGEND"), texto(doc, "legend")));
+        return mensaje;
+    }
+
+    private String texto(Document doc, String tag) {
+        NodeList nodos = doc.getElementsByTagName(tag);
+        if (nodos.getLength() == 0) {
+            return null;
+        }
+        return nodos.item(0).getTextContent().trim();
+    }
+
+    private String textoDeMensaje(NodeList mensajes) {
+        if (mensajes.getLength() == 0) {
+            return null;
+        }
+        Element mensaje = (Element) mensajes.item(0);
+        NodeList textos = mensaje.getElementsByTagName("TEXTO");
+        if (textos.getLength() > 0) {
+            return textos.item(0).getTextContent().trim();
+        }
+        return mensaje.getTextContent().trim();
     }
 
     private boolean esEstadoFinal(EstadoTransaccion estado) {

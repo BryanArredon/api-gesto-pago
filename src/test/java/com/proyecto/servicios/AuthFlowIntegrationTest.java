@@ -24,6 +24,7 @@ import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -101,7 +102,7 @@ class AuthFlowIntegrationTest {
         ResponseEntity<Map> refresh = refrescar(admin.refreshToken());
         assertEquals(HttpStatus.OK, refresh.getStatusCode());
         String nuevoRefresh = (String) refresh.getBody().get("refreshToken");
-        assertFalse(nuevoRefresh.equals(admin.refreshToken()));
+        assertNotEquals(admin.refreshToken(), nuevoRefresh);
 
         ResponseEntity<Map> reuso = refrescar(admin.refreshToken());
         assertEquals(HttpStatus.UNAUTHORIZED, reuso.getStatusCode());

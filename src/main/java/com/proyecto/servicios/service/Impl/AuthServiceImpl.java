@@ -153,7 +153,7 @@ public class AuthServiceImpl implements AuthService {
 
     private List<String> roles(Usuario usuario) {
         return usuario.getRoles().stream()
-                .map(r -> r.getNombre())
+                .map(Rol::getNombre)
                 .sorted()
                 .toList();
     }

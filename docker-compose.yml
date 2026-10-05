@@ -1,0 +1,30 @@
+services:
+
+  redis:
+    image: redis:7-alpine
+    container_name: gp-redis
+    ports:
+      - "6379:6379"
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  sonarqube:
+    image: sonarqube:10.5-community
+    container_name: gp-sonarqube
+    ports:
+      - "9000:9000"
+    environment:
+      - SONAR_ES_BOOTSTRAP_CHECKS_DISABLE=true
+    volumes:
+      - gp-sonarqube-data:/opt/sonarqube/data
+      - gp-sonarqube-extensions:/opt/sonarqube/extensions
+      - gp-sonarqube-logs:/opt/sonarqube/logs
+
+volumes:
+  gp-sonarqube-data:
+  gp-sonarqube-extensions:
+  gp-sonarqube-logs:
