@@ -217,9 +217,10 @@ class PagosServiceImplTest {
     @Test
     void verificarReferenciaDeProductoNoVerificableEsRechazada() {
         when(catalogoConsulta.buscarActivo(76, 205)).thenReturn(Optional.of(recarga()));
+        VerificarReferenciaRequest req = request(76, 205, "5577777777");
 
         ApiException error = assertThrows(ApiException.class,
-                () -> service.verificarReferencia(request(76, 205, "5577777777")));
+                () -> service.verificarReferencia(req));
         assertEquals("PAGO-002", error.getCode());
         verify(gestoPagoTxClient, never()).verifyReference(anyString(), any());
     }
@@ -323,18 +324,20 @@ class PagosServiceImplTest {
         CatalogoProductoCache p = new CatalogoProductoCache();
         p.setIdServicio(999);
         p.setIdProducto(1);
+        PagoRequestDto pagoReq = pago(p, "12345", new BigDecimal("50.00"));
 
         ApiException error = assertThrows(ApiException.class,
-                () -> service.crearTransaccion(1L, pago(p, "12345", new BigDecimal("50.00"))));
+                () -> service.crearTransaccion(1L, pagoReq));
         assertEquals("PAGO-003", error.getCode());
     }
 
     @Test
     void crearServicioSinMontoEsRechazado() {
         when(catalogoConsulta.buscarActivo(108, 272)).thenReturn(Optional.of(servicio()));
+        PagoRequestDto pagoReq = pago(servicio(), "5610440665", null);
 
         ApiException error = assertThrows(ApiException.class,
-                () -> service.crearTransaccion(1L, pago(servicio(), "5610440665", null)));
+                () -> service.crearTransaccion(1L, pagoReq));
         assertEquals("PAGO-004", error.getCode());
     }
 

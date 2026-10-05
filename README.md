@@ -2,7 +2,17 @@
 
 API Spring Boot (Java 17) con catálogos GestoPago/PuntoRed y autenticación JWT.
 
-## Requisitos
+## Docker (producción)
+
+```bash
+docker buildx build --platform linux/amd64 -t bryanarrendon/gesto-pago:latest --push .
+```
+
+Imagen multi-stage: build con Gradle, runtime `eclipse-temurin:17-jre-alpine` (161 MB), usuario no root,
+JVM con GC serial y `MaxRAMPercentage=70`, healthcheck contra `/actuator/health`, sin tests ni `.env` dentro.
+El despliegue en el servidor cachyos está en [DEPLOY.md](DEPLOY.md) (`docker-compose.servidor.yml` + `.env.server.example`).
+
+## Requisitos (desarrollo local)
 
 - JDK 17 (toolchain; el build usa `sh gradlew` porque `gradlew` no es ejecutable y el JDK por defecto del sistema es 26).
 - PostgreSQL y Redis. Para los tests de integración:

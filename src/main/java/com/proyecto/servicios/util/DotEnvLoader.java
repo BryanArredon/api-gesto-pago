@@ -47,22 +47,18 @@ public final class DotEnvLoader {
         try {
             for (String linea : Files.readAllLines(ruta, StandardCharsets.UTF_8)) {
                 String limpia = linea.trim();
-                if (limpia.isEmpty() || limpia.startsWith("#")) {
-                    continue;
-                }
                 int indiceIgual = limpia.indexOf('=');
-                if (indiceIgual < 1) {
-                    continue;
-                }
-                String clave = limpia.substring(0, indiceIgual).trim();
-                String valor = limpia.substring(indiceIgual + 1).trim();
-                if (valor.length() >= 2
-                        && ((valor.startsWith("\"") && valor.endsWith("\""))
-                        || (valor.startsWith("'") && valor.endsWith("'")))) {
-                    valor = valor.substring(1, valor.length() - 1);
-                }
-                if (!clave.isBlank()) {
-                    resultado.put(clave, valor);
+                if (!limpia.isEmpty() && !limpia.startsWith("#") && indiceIgual >= 1) {
+                    String clave = limpia.substring(0, indiceIgual).trim();
+                    String valor = limpia.substring(indiceIgual + 1).trim();
+                    if (valor.length() >= 2
+                            && ((valor.startsWith("\"") && valor.endsWith("\""))
+                            || (valor.startsWith("'") && valor.endsWith("'")))) {
+                        valor = valor.substring(1, valor.length() - 1);
+                    }
+                    if (!clave.isBlank()) {
+                        resultado.put(clave, valor);
+                    }
                 }
             }
         } catch (IOException e) {

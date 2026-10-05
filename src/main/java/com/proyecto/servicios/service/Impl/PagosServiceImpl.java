@@ -58,6 +58,7 @@ public class PagosServiceImpl implements PagosService {
     private static final String CODIGO_DUPLICADO = "06";
     private static final String CODIGO_TIMEOUT = "82";
     private static final String NO_AUTORIZACION = "-1";
+    private static final String ORIGEN_PROVEEDOR = "PROVEEDOR";
     private static final DateTimeFormatter HORA_LOCAL =
             DateTimeFormatter.ofPattern("yyyyMMddHHmmss").withZone(ZoneId.systemDefault());
     private static final DateTimeFormatter ZONA_HORARIA =
@@ -137,7 +138,7 @@ public class PagosServiceImpl implements PagosService {
         }
 
         Transaccion transaccion = prepararTransaccion(existente.orElse(null), usuarioId, producto,
-                request.getReferencia(), monto, request.getIdempotencyKey(), clave);
+                request.getReferencia(), monto, request.getIdempotencyKey());
         registrarEvento(transaccion.getId(), EstadoTransaccion.PENDIENTE, "API",
                 "Transaccion registrada para envio al proveedor");
 
@@ -203,8 +204,7 @@ public class PagosServiceImpl implements PagosService {
     }
 
     private Transaccion prepararTransaccion(Transaccion previa, Long usuarioId, CatalogoProductoCache producto,
-                                            String referencia, BigDecimal monto, String idempotencyKey,
-                                            ClaveIdempotencia clave) {
+                                            String referencia, BigDecimal monto, String idempotencyKey) {
         Transaccion transaccion = previa != null ? previa : new Transaccion();
         if (transaccion.getId() == null) {
             transaccion.setUsuarioId(usuarioId);
@@ -230,18 +230,18 @@ public class PagosServiceImpl implements PagosService {
         String texto = mensaje == null ? "El proveedor rechazo la operacion" : mensaje.getTexto();
         if (CODIGO_EXITO.equals(codigo) || esDuplicadoAplicado(respuesta)) {
             aplicarDatosExito(transaccion, respuesta);
-            cambiarEstado(transaccion, EstadoTransaccion.APROBADA, "PROVEEDOR",
+            cambiarEstado(transaccion, EstadoTransaccion.APROBADA, ORIGEN_PROVEEDOR,
                     mensaje == null ? "Operacion realizada con exito" : texto);
             return;
         }
         if (CODIGO_TIMEOUT.equals(codigo)) {
             transaccion.setErrorMensaje(texto);
-            cambiarEstado(transaccion, EstadoTransaccion.EN_PROCESO, "PROVEEDOR",
+            cambiarEstado(transaccion, EstadoTransaccion.EN_PROCESO, ORIGEN_PROVEEDOR,
                     "Resultado incierto; se confirmara contra el proveedor despues");
             return;
         }
         transaccion.setErrorMensaje(texto);
-        cambiarEstado(transaccion, EstadoTransaccion.FALLIDA, "PROVEEDOR", texto);
+        cambiarEstado(transaccion, EstadoTransaccion.FALLIDA, ORIGEN_PROVEEDOR, texto);
     }
 
     private void aplicarResultadoConfirmTx(Transaccion transaccion, GestoPagoOperacionResponse respuesta) {
@@ -250,11 +250,11 @@ public class PagosServiceImpl implements PagosService {
         String texto = mensaje == null ? "Sin mensaje del proveedor" : mensaje.getTexto();
         if (CODIGO_EXITO.equals(codigo) || CODIGO_DUPLICADO.equals(codigo)) {
             aplicarDatosExito(transaccion, respuesta);
-            cambiarEstado(transaccion, EstadoTransaccion.APROBADA, "PROVEEDOR", texto);
+            cambiarEstado(transaccion, EstadoTransaccion.APROBADA, ORIGEN_PROVEEDOR, texto);
             return;
         }
         transaccion.setErrorMensaje(texto);
-        cambiarEstado(transaccion, EstadoTransaccion.FALLIDA, "PROVEEDOR", texto);
+        cambiarEstado(transaccion, EstadoTransaccion.FALLIDA, ORIGEN_PROVEEDOR, texto);
     }
 
     private boolean esDuplicadoAplicado(GestoPagoOperacionResponse respuesta) {
@@ -339,6 +339,7 @@ public class PagosServiceImpl implements PagosService {
     private GestoPagoOperacionResponse parsear(String xml) {
         try {
             DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+            factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
             factory.setNamespaceAware(false);
             factory.setExpandEntityReferences(false);
             Document doc = factory.newDocumentBuilder().parse(new InputSource(new StringReader(xml)));

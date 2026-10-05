@@ -28,6 +28,7 @@ import java.util.Set;
 public class CatalogoSyncServiceImpl implements CatalogoSyncService {
 
     private static final Set<String> TIPOS_REFERENCIA = Set.of("a", "b", "c", "ab", "bc");
+    private static final String INSERT_INTO = "INSERT INTO ";
 
     private final GestoPagoTokenService gestoPagoTokenService;
     private final JdbcTemplate jdbcTemplate;
@@ -91,7 +92,7 @@ public class CatalogoSyncServiceImpl implements CatalogoSyncService {
         log.info("Nueva version de catalogo: {}", nuevoVersion);
 
         Long versionId = jdbcTemplate.queryForObject(
-                "INSERT INTO " + schema + ".catalogo_versiones "
+                INSERT_INTO + schema + ".catalogo_versiones "
                         + "(version, estado, checksum, fecha_inicio) "
                         + "VALUES (?, 'EN_CARGA', ?, NOW()) RETURNING id",
                 Long.class, nuevoVersion, checksum);
@@ -108,7 +109,7 @@ public class CatalogoSyncServiceImpl implements CatalogoSyncService {
                 "UPDATE " + schema + ".catalogo_versiones SET estado='ACTIVA', fecha_fin=NULL WHERE id=?", versionId);
 
         int publicados = jdbcTemplate.update(
-                "INSERT INTO " + schema + ".productos "
+                INSERT_INTO + schema + ".productos "
                         + "(version_id, id_servicio, id_producto, servicio, producto, id_cat_tipo_servicio, "
                         + "tipo_front, tipo_referencia, precio, legend, has_digito_verificador, show_ayuda, activo) "
                         + "SELECT " + versionId + ", id_servicio, id_producto, servicio, producto, id_cat_tipo_servicio, "
@@ -125,7 +126,7 @@ public class CatalogoSyncServiceImpl implements CatalogoSyncService {
         log.info("Resultado BD: {}, duracion {} ms", resultado.getEstado(), resultado.getDuracionMs());
 
         jdbcTemplate.update(
-                "INSERT INTO " + schema + ".catalogo_sincronizaciones "
+                INSERT_INTO + schema + ".catalogo_sincronizaciones "
                         + "(version_id, estado, inicio, fin, productos_recibidos, productos_publicados, "
                         + "errores, checksum, mensaje) "
                         + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -173,7 +174,7 @@ public class CatalogoSyncServiceImpl implements CatalogoSyncService {
 
     private void publicarStaging(List<CatalogoProductoCache> productos) {
         jdbcTemplate.batchUpdate(
-                "INSERT INTO " + schema + ".productos_staging "
+                INSERT_INTO + schema + ".productos_staging "
                         + "(id_servicio, id_producto, servicio, producto, id_cat_tipo_servicio, "
                         + "tipo_front, tipo_referencia, precio, legend, has_digito_verificador, show_ayuda) "
                         + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -234,7 +235,10 @@ public class CatalogoSyncServiceImpl implements CatalogoSyncService {
     }
 
     private String tipoReferencia(String valor) {
-        String v = trim(valor).toLowerCase();
+        if (valor == null) {
+            throw new IllegalArgumentException("tipoReferencia invalido: null");
+        }
+        String v = valor.trim().toLowerCase();
         if (!TIPOS_REFERENCIA.contains(v)) {
             throw new IllegalArgumentException("tipoReferencia invalido: " + valor);
         }

@@ -1,0 +1,17 @@
+.git
+.gitignore
+.idea
+.gradle
+build/
+bin/
+out/
+*.iml
+.env
+.env.*
+!.env.example
+docker-compose*.yml
+DEPLOY.md
+README.md
+src/test/
+Dockerfile
+.dockerignore
