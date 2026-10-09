@@ -1,0 +1,124 @@
+# ==============================================================================
+# Gesto Pago — Render Blueprint (infraestructura como código)
+#
+# Despliega en un solo sync:
+#   - PostgreSQL compartido (esquemas: gestor_pagos + onboarding_clientes)
+#   - Key Value (Redis) para api-gesto-pago
+#   - api-gesto-pago      (desde ESTE repo)
+#   - onboarding-clientes (desde su propio repo en GitHub)
+#
+# Cómo publicar:
+#   1. Crea un repo en GitHub para onboarding-clientes y súbelo.
+#   2. Reemplaza <TU_USUARIO_GITHUB>/onboarding-clientes por tu URL real
+#      en el servicio "onboarding-clientes" (campo repo/branch).
+#   3. Render Dashboard -> New -> Blueprint -> elige el repo api-gesto-pago.
+#      Te pedirá confirmar la creación de Postgres, Key Value y los 2 Web Services.
+#
+# Nota: JWT_SECRET es el MISMO en ambos servicios a propósito: así un token
+# emitido por uno lo valida el otro (igual que corre en local).
+# ==============================================================================
+
+envVarGroups:
+  - name: gesto-pago-db
+    envVars:
+      - key: PGHOST
+        fromDatabase:
+          name: gesto-pago-postgres
+          property: host
+      - key: PGPORT
+        fromDatabase:
+          name: gesto-pago-postgres
+          property: port
+      - key: PGDATABASE
+        fromDatabase:
+          name: gesto-pago-postgres
+          property: database
+      - key: PGUSER
+        fromDatabase:
+          name: gesto-pago-postgres
+          property: user
+      - key: PGPASSWORD
+        fromDatabase:
+          name: gesto-pago-postgres
+          property: password
+
+services:
+  # ================= api-gesto-pago (Java 17 / Gradle / Docker) =================
+  - type: web
+    name: api-gesto-pago
+    runtime: docker
+    plan: free
+    region: oregon
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /actuator/health
+    maxShutdownDelaySeconds: 120
+    envVars:
+      - fromGroup: gesto-pago-db
+      - key: REDIS_HOST
+        fromService:
+          name: gesto-pago-redis
+          type: keyvalue
+          property: host
+      - key: REDIS_PORT
+        fromService:
+          name: gesto-pago-redis
+          type: keyvalue
+          property: port
+      - key: REDIS_PASSWORD
+        value: ""
+      - key: GESTOPAGO_AUTH_URL
+        value: https://gestopago.portalventas.net
+      - key: GESTOPAGO_AUTH_ID_DISTRIBUIDOR
+        value: "83"
+      - key: GESTOPAGO_AUTH_CODIGO_DISPOSITIVO
+        value: GPS83-TPV-17
+      - key: GESTOPAGO_AUTH_PASSWORD
+        value: "12345678"
+      - key: JWT_SECRET
+        value: fnw291pLQ3PijpnlOZFtaJD3a5xp+K6oZRCW7mzZyAuAl/hGaT79QZfOMuZIfnnB
+      - key: ADMIN_EMAIL
+        value: admin@prueba.com
+      - key: ADMIN_PASSWORD
+        value: "linux123#"
+      - key: CORS_ALLOWED_ORIGINS
+        value: http://localhost:3000
+      - key: SPRING_JPA_SHOW_SQL
+        value: "false"
+      - key: SPRING_JPA_HIBERNATE_DDL_AUTO
+        value: "none"
+
+  # ================= onboarding-clientes (Java 21 / Maven / Docker) =================
+  - type: web
+    name: onboarding-clientes
+    runtime: docker
+    plan: free
+    region: oregon
+    repo: https://github.com/<TU_USUARIO_GITHUB>/onboarding-clientes.git
+    branch: main
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /actuator/health
+    maxShutdownDelaySeconds: 120
+    envVars:
+      - fromGroup: gesto-pago-db
+      - key: JWT_SECRET
+        value: fnw291pLQ3PijpnlOZFtaJD3a5xp+K6oZRCW7mzZyAuAl/hGaT79QZfOMuZIfnnB
+      - key: SPRING_PROFILES_ACTIVE
+        value: prod
+      - key: SPRING_JPA_SHOW_SQL
+        value: "false"
+
+  # ================= Redis (Key Value) para api-gesto-pago =================
+  # ipAllowList vacío = solo conexiones internas de los servicios del workspace
+  - type: keyvalue
+    name: gesto-pago-redis
+    plan: free
+    region: oregon
+    ipAllowList: []
+    maxmemoryPolicy: allkeys-lru
+    persistenceMode: off
+
+databases:
+  - name: gesto-pago-postgres
+    plan: free
+    region: oregon
+    postgresMajorVersion: "16"
