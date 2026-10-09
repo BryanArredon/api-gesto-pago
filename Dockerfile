@@ -31,8 +31,8 @@ COPY --from=build --chown=app:app /src/spring-boot-loader/ ./
 USER app
 EXPOSE 8080
 
-# GC serial + límite por % de RAM: en un contenedor de 2 GB no se necesita G1
-ENV JAVA_OPTS="-XX:MaxRAMPercentage=70.0 -XX:InitialRAMPercentage=25.0 -XX:+UseSerialGC -XX:+ExitOnOutOfMemoryError -Dfile.encoding=UTF-8 -Duser.timezone=America/Mexico_City" \
+# GC serial + límite por % de RAM: plan Free de Render = 512 MiB
+ENV JAVA_OPTS="-XX:MaxRAMPercentage=45.0 -XX:InitialRAMPercentage=20.0 -XX:+UseSerialGC -XX:MaxMetaspaceSize=128m -XX:+ExitOnOutOfMemoryError -Dfile.encoding=UTF-8 -Duser.timezone=America/Mexico_City" \
     TZ="America/Mexico_City"
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=45s --retries=3 \
