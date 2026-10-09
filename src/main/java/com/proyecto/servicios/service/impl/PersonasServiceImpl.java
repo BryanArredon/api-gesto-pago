@@ -1,4 +1,4 @@
-package com.proyecto.servicios.service.Impl;
+package com.proyecto.servicios.service.impl;
 
 import com.proyecto.servicios.entity.sf.Personas;
 import com.proyecto.servicios.model.EliminaPersonaRequest;

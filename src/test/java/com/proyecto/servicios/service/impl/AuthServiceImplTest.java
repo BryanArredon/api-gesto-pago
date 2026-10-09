@@ -1,4 +1,4 @@
-package com.proyecto.servicios.service.Impl;
+package com.proyecto.servicios.service.impl;
 
 import com.proyecto.servicios.config.security.JwtService;
 import com.proyecto.servicios.entity.auth.RefreshToken;

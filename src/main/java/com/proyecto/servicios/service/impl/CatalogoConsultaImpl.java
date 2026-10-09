@@ -1,4 +1,4 @@
-package com.proyecto.servicios.service.Impl;
+package com.proyecto.servicios.service.impl;
 
 import com.proyecto.servicios.model.CatalogoProductoCache;
 import com.proyecto.servicios.service.CatalogoConsulta;
