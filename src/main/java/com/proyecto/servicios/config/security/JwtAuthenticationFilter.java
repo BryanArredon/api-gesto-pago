@@ -38,9 +38,12 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             String token = header.substring(BEARER.length());
             try {
                 Claims claims = jwtService.validarAccessToken(token);
-                List<SimpleGrantedAuthority> authorities = extraerRoles(claims);
+                String emailPrincipal = jwtService.extraerEmail(claims);
+                List<SimpleGrantedAuthority> authorities = jwtService.extraerRoles(claims).stream()
+                        .map(SimpleGrantedAuthority::new)
+                        .toList();
                 UsernamePasswordAuthenticationToken authentication =
-                        new UsernamePasswordAuthenticationToken(claims.getSubject(), null, authorities);
+                        new UsernamePasswordAuthenticationToken(emailPrincipal, null, authorities);
                 SecurityContextHolder.getContext().setAuthentication(authentication);
             } catch (JwtException e) {
                 log.warn("Token JWT invalido: {}", e.getMessage());
@@ -48,12 +51,5 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             }
         }
         filterChain.doFilter(request, response);
-    }
-
-    @SuppressWarnings("unchecked")
-    private List<SimpleGrantedAuthority> extraerRoles(Claims claims) {
-        List<String> roles = claims.get("roles", List.class);
-        return roles == null ? List.of()
-                : roles.stream().map(SimpleGrantedAuthority::new).toList();
     }
 }

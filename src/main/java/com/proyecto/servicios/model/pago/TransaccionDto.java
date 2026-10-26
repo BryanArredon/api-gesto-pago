@@ -1,6 +1,7 @@
 package com.proyecto.servicios.model.pago;
 
 import com.proyecto.servicios.entity.pago.Transaccion;
+import com.proyecto.servicios.util.ValidadorLuhn;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -23,6 +24,8 @@ public class TransaccionDto {
 
     private Long id;
     private String upc;
+    private String numeroCuentaEnmascarado;
+    private String folioRetencion;
     private Integer idServicio;
     private Integer idProducto;
     private String servicio;
@@ -42,6 +45,9 @@ public class TransaccionDto {
         TransaccionDto dto = new TransaccionDto();
         dto.setId(tx.getId());
         dto.setUpc(tx.getUpc());
+        dto.setNumeroCuentaEnmascarado(
+                tx.getNumeroCuenta() == null ? null : ValidadorLuhn.enmascararCuenta(tx.getNumeroCuenta()));
+        dto.setFolioRetencion(tx.getFolioRetencion() == null ? null : tx.getFolioRetencion().toString());
         dto.setIdServicio(tx.getIdServicio());
         dto.setIdProducto(tx.getIdProducto());
         dto.setServicio(tx.getServicio());

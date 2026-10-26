@@ -15,6 +15,7 @@ import lombok.Setter;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.UUID;
 
 @Entity
 @Table(name = "transacciones")
@@ -28,6 +29,12 @@ public class Transaccion {
 
     @Column(name = "usuario_id", nullable = false)
     private Long usuarioId;
+
+    @Column(name = "numero_cuenta", length = 10)
+    private String numeroCuenta;
+
+    @Column(name = "folio_retencion")
+    private UUID folioRetencion;
 
     @Column(name = "id_servicio", nullable = false)
     private Integer idServicio;
@@ -51,11 +58,14 @@ public class Transaccion {
     private BigDecimal comision = BigDecimal.ZERO;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "estado", nullable = false, length = 20)
+    @Column(name = "estado", nullable = false, length = 25)
     private EstadoTransaccion estado;
 
     @Column(name = "idempotency_key", nullable = false, length = 36)
     private String idempotencyKey;
+
+    @Column(name = "payload_hash", length = 64)
+    private String payloadHash;
 
     @Column(name = "upc", length = 15)
     private String upc;
@@ -78,6 +88,12 @@ public class Transaccion {
     @Column(name = "error_mensaje", columnDefinition = "TEXT")
     private String errorMensaje;
 
+    @Column(name = "intentos_confirmacion", nullable = false)
+    private int intentosConfirmacion;
+
+    @Column(name = "proxima_confirmacion_en")
+    private Instant proximaConfirmacionEn;
+
     @Column(name = "fecha")
     private Instant fecha;
 
@@ -89,8 +105,11 @@ public class Transaccion {
 
     @PrePersist
     void onCreate() {
-        createdAt = Instant.now();
-        updatedAt = Instant.now();
+        Instant ahora = Instant.now();
+        if (createdAt == null) {
+            createdAt = ahora;
+        }
+        updatedAt = ahora;
     }
 
     @PreUpdate

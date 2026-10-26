@@ -1,12 +1,11 @@
 package com.proyecto.servicios.controller;
 
-import com.proyecto.servicios.exception.ApiException;
 import com.proyecto.servicios.model.pago.PagoRequestDto;
 import com.proyecto.servicios.model.pago.TransaccionDto;
 import com.proyecto.servicios.model.pago.VerificarReferenciaRequest;
 import com.proyecto.servicios.model.pago.VerificarReferenciaResponse;
-import com.proyecto.servicios.repositorys.auth.UsuarioRepository;
 import com.proyecto.servicios.service.PagosService;
+import com.proyecto.servicios.service.security.ServicioIdentidadSso;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -30,11 +29,11 @@ import java.util.List;
 public class PagosController {
 
     private final PagosService pagosService;
-    private final UsuarioRepository usuarioRepository;
+    private final ServicioIdentidadSso servicioIdentidadSso;
 
-    public PagosController(PagosService pagosService, UsuarioRepository usuarioRepository) {
+    public PagosController(PagosService pagosService, ServicioIdentidadSso servicioIdentidadSso) {
         this.pagosService = pagosService;
-        this.usuarioRepository = usuarioRepository;
+        this.servicioIdentidadSso = servicioIdentidadSso;
     }
 
     @PostMapping(value = "/verificar-referencia", produces = MediaType.APPLICATION_JSON_VALUE)
@@ -65,9 +64,6 @@ public class PagosController {
     }
 
     private Long usuarioId(Authentication authentication) {
-        String email = authentication.getName();
-        return usuarioRepository.findByEmail(email)
-                .map(u -> u.getId())
-                .orElseThrow(ApiException::noAutenticado);
+        return servicioIdentidadSso.obtenerOCrearUsuarioId(authentication);
     }
 }

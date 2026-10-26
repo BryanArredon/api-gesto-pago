@@ -15,6 +15,12 @@ public class ApiException extends RuntimeException {
         this.status = status;
     }
 
+    public ApiException(String code, String message, HttpStatus status, Throwable cause) {
+        super(message, cause);
+        this.code = code;
+        this.status = status;
+    }
+
     public static ApiException authInvalida() {
         return new ApiException(ErrorCodes.AUTH_001, "Credenciales invalidas", HttpStatus.UNAUTHORIZED);
     }
@@ -66,5 +72,59 @@ public class ApiException extends RuntimeException {
 
     public static ApiException confirmacionNoPermitida() {
         return new ApiException(ErrorCodes.PAGO_005, "La transaccion no esta en estado de confirmacion", HttpStatus.CONFLICT);
+    }
+
+    public static ApiException conflictoIdempotencia() {
+        return new ApiException(
+                ErrorCodes.PAGO_006,
+                "La clave de idempotencia ya fue utilizada con un payload distinto",
+                HttpStatus.CONFLICT);
+    }
+
+    public static ApiException numeroCuentaInvalido() {
+        return new ApiException(
+                ErrorCodes.PAGO_007,
+                "El numero de cuenta bancaria es invalido (debe tener 10 digitos y digito verificador Luhn valido)",
+                HttpStatus.BAD_REQUEST);
+    }
+
+    public static ApiException pinAutorizacionInvalido(String detalle) {
+        return new ApiException(
+                ErrorCodes.PAGO_008,
+                detalle == null || detalle.isBlank() ? "El PIN de autorizacion es invalido" : detalle,
+                HttpStatus.UNAUTHORIZED);
+    }
+
+    public static ApiException pinAutorizacionBloqueado(String detalle) {
+        return new ApiException(
+                ErrorCodes.PAGO_009,
+                detalle == null || detalle.isBlank()
+                        ? "El PIN de autorizacion esta bloqueado temporalmente por intentos fallidos"
+                        : detalle,
+                HttpStatus.LOCKED);
+    }
+
+    public static ApiException saldoInsuficiente() {
+        return new ApiException(
+                ErrorCodes.PAGO_010,
+                "Saldo disponible insuficiente en la cuenta bancaria para cubrir el monto mas la comision",
+                HttpStatus.UNPROCESSABLE_ENTITY);
+    }
+
+    public static ApiException cuentaBancariaInactiva(String detalle) {
+        return new ApiException(
+                ErrorCodes.PAGO_011,
+                detalle == null || detalle.isBlank()
+                        ? "La cuenta bancaria o el cliente no se encuentran activos para operar"
+                        : detalle,
+                HttpStatus.CONFLICT);
+    }
+
+    public static ApiException servicioBancarioNoDisponible(Throwable causa) {
+        return new ApiException(
+                ErrorCodes.PAGO_012,
+                "El servicio bancario de retencion de fondos no esta disponible temporalmente",
+                HttpStatus.SERVICE_UNAVAILABLE,
+                causa);
     }
 }
