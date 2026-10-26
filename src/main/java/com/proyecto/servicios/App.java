@@ -2,7 +2,6 @@ package com.proyecto.servicios;
 
 import com.proyecto.servicios.util.DotEnvLoader;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
@@ -23,9 +22,7 @@ import java.time.format.DateTimeFormatter;
 
 public class App implements CommandLineRunner {
 
-    @Autowired
     private ApplicationContext context;
-
 
     public static void main(String[] args) {
         DotEnvLoader.cargarSiExiste();
@@ -34,7 +31,6 @@ public class App implements CommandLineRunner {
 
     @Override
     public void run(String... args) {
-        //	displayInfo(context.getBean(BuildProperties.class));
     }
 
     private static void displayInfo(BuildProperties buildProperties) {

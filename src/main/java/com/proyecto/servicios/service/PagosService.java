@@ -1,5 +1,6 @@
 package com.proyecto.servicios.service;
 
+import com.proyecto.servicios.entity.pago.Transaccion;
 import com.proyecto.servicios.model.pago.PagoRequestDto;
 import com.proyecto.servicios.model.pago.TransaccionDto;
 import com.proyecto.servicios.model.pago.VerificarReferenciaRequest;
@@ -14,6 +15,8 @@ public interface PagosService {
     TransaccionDto crearTransaccion(Long usuarioId, PagoRequestDto request);
 
     TransaccionDto confirmarTransaccion(Long usuarioId, Long id);
+
+    Transaccion conciliarTransaccionPendiente(Transaccion transaccion);
 
     List<TransaccionDto> historial(Long usuarioId);
 }
