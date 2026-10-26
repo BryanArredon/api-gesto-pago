@@ -64,6 +64,29 @@ class JwtServiceTest {
         assertTrue(service.hash("abc").length() >= 43);
     }
 
+    @Test
+    void aceptaTokenEmitidoPorOnboardingClientesYExtraeCorreoYRol() {
+        JwtService emisorOnboarding = new JwtService(SECRET, "onboarding-clientes", 15);
+        JwtService receptorGestoPago = new JwtService(SECRET, "prueba-servicios", 15);
+
+        String tokenOnboarding = io.jsonwebtoken.Jwts.builder()
+                .issuer("onboarding-clientes")
+                .subject(java.util.UUID.randomUUID().toString())
+                .claim("clienteId", java.util.UUID.randomUUID().toString())
+                .claim("correo", "Cliente.Banco@UTNG.edu.mx")
+                .claim("rol", "CLIENTE")
+                .issuedAt(new java.util.Date())
+                .expiration(new java.util.Date(System.currentTimeMillis() + 60_000L))
+                .signWith(io.jsonwebtoken.security.Keys.hmacShaKeyFor(
+                        SECRET.getBytes(java.nio.charset.StandardCharsets.UTF_8)))
+                .compact();
+
+        Claims claims = receptorGestoPago.validarAccessToken(tokenOnboarding);
+        assertNotNull(claims);
+        assertEquals("cliente.banco@utng.edu.mx", receptorGestoPago.extraerEmail(claims));
+        assertEquals(List.of("ROLE_CLIENTE"), receptorGestoPago.extraerRoles(claims));
+    }
+
     private Usuario usuario() {
         Rol admin = new Rol();
         admin.setNombre("ADMIN");
