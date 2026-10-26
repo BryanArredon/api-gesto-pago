@@ -6,6 +6,13 @@ plugins {
     id "org.owasp.dependencycheck" version "8.1.2"
     id 'com.github.ben-manes.versions' version '0.46.0'
     id 'java'
+    id 'eclipse'
+}
+
+eclipse {
+    classpath {
+        defaultOutputDir = file('bin/main')
+    }
 }
 
 group 'com.proyecto.servicio.empresa'
@@ -103,6 +110,7 @@ configurations.all {
     exclude group: "org.apache.logging.log4j", module: "log4j-api"
     exclude group: "org.apache.logging.log4j", module: "log4j-to-slf4j"
     exclude group: "log4j", module: "log4j"
+    exclude group: "commons-logging", module: "commons-logging"
 }
 
 sonarqube {

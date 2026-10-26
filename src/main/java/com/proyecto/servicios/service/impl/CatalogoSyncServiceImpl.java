@@ -167,7 +167,7 @@ public class CatalogoSyncServiceImpl implements CatalogoSyncService {
         List<CatalogoProductoCache> enBd = jdbcTemplate.query(
                 "SELECT id_servicio, id_producto, servicio, producto, id_cat_tipo_servicio, tipo_front, "
                         + "tipo_referencia, precio, legend, has_digito_verificador, show_ayuda "
-                        + "FROM v_catalogo_activo ORDER BY id_servicio, id_producto", rm);
+                        + "FROM " + schema + ".v_catalogo_activo ORDER BY id_servicio, id_producto", rm);
         log.info("Catalogo servido desde BD ({} filas)", enBd.size());
         return enBd;
     }
