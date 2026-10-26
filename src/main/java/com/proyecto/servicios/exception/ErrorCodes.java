@@ -20,4 +20,11 @@ public final class ErrorCodes {
     public static final String PAGO_003 = "PAGO-003";
     public static final String PAGO_004 = "PAGO-004";
     public static final String PAGO_005 = "PAGO-005";
+    public static final String PAGO_006 = "PAGO-006";
+    public static final String PAGO_007 = "PAGO-007";
+    public static final String PAGO_008 = "PAGO-008";
+    public static final String PAGO_009 = "PAGO-009";
+    public static final String PAGO_010 = "PAGO-010";
+    public static final String PAGO_011 = "PAGO-011";
+    public static final String PAGO_012 = "PAGO-012";
 }
