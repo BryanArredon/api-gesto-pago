@@ -31,7 +31,9 @@ public class RateLimitFilter extends OncePerRequestFilter {
     private static final String ENDPOINT_API = "api";
     private static final Set<String> PATHS_SIN_LIMITE = Set.of(
             "/auth/login", "/auth/refresh",
-            "/v3/api-docs", "/swagger-ui", "/actuator/health", "/error");
+            "/v3/api-docs", "/swagger-ui", "/logo.jpeg", "/favicon.png",
+            "/custom-swagger.css", "/custom-swagger.js",
+            "/actuator/health", "/error");
 
     private final ResilientRateLimiter rateLimiter;
     private final ObjectMapper objectMapper;
