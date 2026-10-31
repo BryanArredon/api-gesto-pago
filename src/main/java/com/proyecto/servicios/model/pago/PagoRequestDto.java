@@ -2,6 +2,8 @@ package com.proyecto.servicios.model.pago;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.proyecto.servicios.util.ValidadorLuhn;
+import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
@@ -43,6 +45,8 @@ public class PagoRequestDto {
     @Size(max = 100, message = "La referencia no puede exceder 100 caracteres")
     private String referencia;
 
+    @DecimalMin(value = "0.01", message = "El monto debe ser mayor que cero")
+    @Digits(integer = 12, fraction = 2, message = "El monto solo puede contener hasta 2 decimales")
     private BigDecimal monto;
 
     @NotBlank(message = "idempotencyKey es obligatoria")
