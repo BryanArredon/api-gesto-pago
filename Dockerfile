@@ -1,7 +1,8 @@
 # syntax=docker/dockerfile:1
 
 # ---------- 1. Build + extracción de capas (solo la imagen de Gradle) ----------
-FROM gradle:8.10.2-jdk17-alpine AS build
+# jdk17-alpine no publica arm64; jammy sí y conserva el toolchain 17 del build.gradle
+FROM gradle:8.10.2-jdk17-jammy AS build
 WORKDIR /src
 ENV GRADLE_USER_HOME=/src/.gradle
 # Copiar solo el descriptor primero: la capa de dependencias se cachea
@@ -15,7 +16,8 @@ RUN gradle --no-daemon clean bootJar -x test \
     && rm -rf build/libs build/tmp build/classes build/resources
 
 # ---------- 2. Runtime ----------
-FROM eclipse-temurin:17-jre-alpine AS runtime
+# El tag 17-jre-alpine no publica arm64; Java 21 ejecuta el bytecode 17 sin cambios
+FROM eclipse-temurin:21-jre-alpine AS runtime
 RUN cp /usr/share/zoneinfo/America/Mexico_City /etc/localtime \
     && echo "America/Mexico_City" > /etc/timezone \
     && addgroup -g 10001 -S app \

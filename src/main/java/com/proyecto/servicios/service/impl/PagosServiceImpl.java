@@ -221,14 +221,26 @@ public class PagosServiceImpl implements PagosService {
         // Etapa 2: Validacion bancaria (Cuenta activa, PIN 4 digitos, Saldo >= Monto + Comision) y Hold
         String emailTitular = obtenerEmailUsuario(usuarioId);
         String concepto = "Pago " + producto.getServicio() + " - " + producto.getProducto();
-        RetencionCuentaResponse retencion = servicioRetencionBancaria.retenerSaldo(
-                emailTitular,
-                numeroCuenta,
-                request.getPinAutorizacion().trim(),
-                monto,
-                comision,
-                concepto,
-                idempotencyKey);
+        RetencionCuentaResponse retencion;
+        try {
+            retencion = servicioRetencionBancaria.retenerSaldo(
+                    emailTitular,
+                    numeroCuenta,
+                    request.getPinAutorizacion().trim(),
+                    monto,
+                    comision,
+                    concepto,
+                    idempotencyKey);
+        } catch (ApiException e) {
+            persistencia.completarReverso(transaccion.getId(), e.getMessage(), "VALIDACION_BANCARIA");
+            throw e;
+        } catch (Exception e) {
+            persistencia.completarReverso(
+                    transaccion.getId(),
+                    "Fallo al solicitar retencion bancaria: " + e.getMessage(),
+                    "VALIDACION_BANCARIA");
+            throw e;
+        }
 
         // Etapa 3: Confirmar estado RETENIDO con el FolioMovimiento bancario antes de llamar al Switch
         Instant expiraHold = retencion != null && retencion.expiraEn() != null
