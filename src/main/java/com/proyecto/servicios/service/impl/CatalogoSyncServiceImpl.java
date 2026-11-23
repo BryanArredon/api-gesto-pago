@@ -8,20 +8,30 @@ import com.proyecto.servicios.model.gestopago.GestoPagoProducto;
 import com.proyecto.servicios.service.CatalogoSyncService;
 import com.proyecto.servicios.service.GestoPagoTokenService;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Service;
 
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Set;
+import java.util.zip.GZIPInputStream;
+import java.util.zip.GZIPOutputStream;
 
 @Service
 @Slf4j
@@ -29,6 +39,8 @@ public class CatalogoSyncServiceImpl implements CatalogoSyncService {
 
     private static final Set<String> TIPOS_REFERENCIA = Set.of("a", "b", "c", "ab", "bc");
     private static final String INSERT_INTO = "INSERT INTO ";
+    /** Prefijo del valor comprimido en Redis; sin el prefijo se lee como JSON plano (formato anterior). */
+    private static final String PREFIJO_GZIP = "gz:";
 
     private final GestoPagoTokenService gestoPagoTokenService;
     private final JdbcTemplate jdbcTemplate;
@@ -36,19 +48,47 @@ public class CatalogoSyncServiceImpl implements CatalogoSyncService {
     private final ObjectMapper objectMapper;
     private final String schema;
     private final String redisClave;
+    private final Duration ttlMemoria;
+    private final Clock clock;
 
+    /**
+     * Copia local del catalogo: evita bajar el JSON completo de Redis en cada peticion.
+     * El catalogo solo cambia al sincronizar, asi que la TTL acota lo desactualizada que
+     * puede estar otra instancia.
+     */
+    private volatile Instantanea enMemoria;
+
+    private record Instantanea(List<CatalogoProductoCache> productos, Instant cargadoEn) {
+    }
+
+    @Autowired
     public CatalogoSyncServiceImpl(GestoPagoTokenService gestoPagoTokenService,
                                    JdbcTemplate jdbcTemplate,
                                    StringRedisTemplate redisTemplate,
                                    ObjectMapper objectMapper,
                                    @Value("${spring.flyway.schemas}") String schema,
-                                   @Value("${catalogo.redis.key}") String redisClave) {
+                                   @Value("${catalogo.redis.key}") String redisClave,
+                                   @Value("${catalogo.cache.memoria-ttl:PT5M}") Duration ttlMemoria) {
+        this(gestoPagoTokenService, jdbcTemplate, redisTemplate, objectMapper, schema, redisClave,
+                ttlMemoria, Clock.systemUTC());
+    }
+
+    CatalogoSyncServiceImpl(GestoPagoTokenService gestoPagoTokenService,
+                            JdbcTemplate jdbcTemplate,
+                            StringRedisTemplate redisTemplate,
+                            ObjectMapper objectMapper,
+                            String schema,
+                            String redisClave,
+                            Duration ttlMemoria,
+                            Clock clock) {
         this.gestoPagoTokenService = gestoPagoTokenService;
         this.jdbcTemplate = jdbcTemplate;
         this.redisTemplate = redisTemplate;
         this.objectMapper = objectMapper;
         this.schema = schema;
         this.redisClave = redisClave;
+        this.ttlMemoria = ttlMemoria;
+        this.clock = clock;
     }
 
     @Override
@@ -133,22 +173,68 @@ public class CatalogoSyncServiceImpl implements CatalogoSyncService {
                 versionId, resultado.getEstado(), inicio, resultado.getFin(),
                 recibidos, publicados, erroresDetalle.size(), checksum, resultado.getMensaje());
 
+        guardarEnMemoria(validos);
         guardarEnRedis(validos, resultado);
         return resultado;
     }
 
     @Override
     public List<CatalogoProductoCache> obtenerProductosActivos() {
-        try {
-            String json = redisTemplate.opsForValue().get(redisClave);
-            if (json != null && !json.isBlank()) {
-                log.info("Catalogo servido desde Redis (clave {})", redisClave);
-                return objectMapper.readValue(json, new TypeReference<List<CatalogoProductoCache>>() {
-                });
+        Instantanea actual = enMemoria;
+        if (vigente(actual)) {
+            return actual.productos();
+        }
+        return cargar();
+    }
+
+    /** Una sola carga a la vez: las peticiones concurrentes esperan y reusan el resultado. */
+    private synchronized List<CatalogoProductoCache> cargar() {
+        Instantanea actual = enMemoria;
+        if (vigente(actual)) {
+            return actual.productos();
+        }
+        List<CatalogoProductoCache> productos = leerDeRedis();
+        if (productos == null) {
+            productos = leerDeBd();
+            if (!productos.isEmpty()) {
+                guardarEnRedis(productos, new CatalogoSyncResult());
             }
+        }
+        return guardarEnMemoria(productos);
+    }
+
+    private boolean vigente(Instantanea instantanea) {
+        return instantanea != null
+                && instantanea.cargadoEn().plus(ttlMemoria).isAfter(clock.instant());
+    }
+
+    private List<CatalogoProductoCache> guardarEnMemoria(List<CatalogoProductoCache> productos) {
+        List<CatalogoProductoCache> inmutable = List.copyOf(productos);
+        enMemoria = new Instantanea(inmutable, clock.instant());
+        return inmutable;
+    }
+
+    private List<CatalogoProductoCache> leerDeRedis() {
+        try {
+            String valor = redisTemplate.opsForValue().get(redisClave);
+            if (valor == null || valor.isBlank()) {
+                return null;
+            }
+            String json = valor.startsWith(PREFIJO_GZIP)
+                    ? descomprimir(valor.substring(PREFIJO_GZIP.length()))
+                    : valor;
+            List<CatalogoProductoCache> productos = objectMapper.readValue(json,
+                    new TypeReference<List<CatalogoProductoCache>>() {
+                    });
+            log.info("Catalogo cargado desde Redis (clave {}, {} productos)", redisClave, productos.size());
+            return productos;
         } catch (Exception e) {
             log.warn("No se pudo leer catalogo desde Redis: {}", e.getMessage());
+            return null;
         }
+    }
+
+    private List<CatalogoProductoCache> leerDeBd() {
         RowMapper<CatalogoProductoCache> rm = (rs, n) -> {
             CatalogoProductoCache c = new CatalogoProductoCache();
             c.setIdServicio(rs.getInt("id_servicio"));
@@ -168,7 +254,7 @@ public class CatalogoSyncServiceImpl implements CatalogoSyncService {
                 "SELECT id_servicio, id_producto, servicio, producto, id_cat_tipo_servicio, tipo_front, "
                         + "tipo_referencia, precio, legend, has_digito_verificador, show_ayuda "
                         + "FROM " + schema + ".v_catalogo_activo ORDER BY id_servicio, id_producto", rm);
-        log.info("Catalogo servido desde BD ({} filas)", enBd.size());
+        log.info("Catalogo cargado desde BD ({} filas)", enBd.size());
         return enBd;
     }
 
@@ -197,14 +283,29 @@ public class CatalogoSyncServiceImpl implements CatalogoSyncService {
 
     private void guardarEnRedis(List<CatalogoProductoCache> productos, CatalogoSyncResult resultado) {
         try {
-            String json = objectMapper.writeValueAsString(productos);
-            redisTemplate.opsForValue().set(redisClave, json);
+            String valor = PREFIJO_GZIP + comprimir(objectMapper.writeValueAsString(productos));
+            redisTemplate.opsForValue().set(redisClave, valor);
             resultado.setRedisCacheado(true);
             resultado.setRedisClave(redisClave);
-            log.info("Catalogo cacheado en Redis (clave {}, {} bytes)", redisClave, json.getBytes(StandardCharsets.UTF_8).length);
+            log.info("Catalogo cacheado en Redis (clave {}, {} bytes comprimido)", redisClave, valor.length());
         } catch (Exception e) {
             resultado.setRedisCacheado(false);
             log.warn("No se pudo cachear catalogo en Redis: {}", e.getMessage());
+        }
+    }
+
+    private static String comprimir(String json) throws IOException {
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        try (GZIPOutputStream gzip = new GZIPOutputStream(bytes)) {
+            gzip.write(json.getBytes(StandardCharsets.UTF_8));
+        }
+        return Base64.getEncoder().encodeToString(bytes.toByteArray());
+    }
+
+    private static String descomprimir(String base64) throws IOException {
+        try (GZIPInputStream gzip = new GZIPInputStream(
+                new ByteArrayInputStream(Base64.getDecoder().decode(base64)))) {
+            return new String(gzip.readAllBytes(), StandardCharsets.UTF_8);
         }
     }
 
