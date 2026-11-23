@@ -18,7 +18,8 @@ RUN gradle --no-daemon clean bootJar -x test \
 # ---------- 2. Runtime ----------
 # El tag 17-jre-alpine no publica arm64; Java 21 ejecuta el bytecode 17 sin cambios
 FROM eclipse-temurin:21-jre-alpine AS runtime
-RUN cp /usr/share/zoneinfo/America/Mexico_City /etc/localtime \
+RUN apk add --no-cache tzdata \
+    && cp /usr/share/zoneinfo/America/Mexico_City /etc/localtime \
     && echo "America/Mexico_City" > /etc/timezone \
     && addgroup -g 10001 -S app \
     && adduser -u 10001 -S app -G app
