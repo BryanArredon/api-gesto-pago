@@ -31,6 +31,9 @@ public class JwtService {
     private static final String ROL_CLAIM = "rol";
     private static final String CORREO_CLAIM = "correo";
     private static final String EMISOR_ONBOARDING_DEFECTO = "onboarding-clientes";
+    /** Audiencia de los tokens de acceso de onboarding; refresh y desafio MFA usan otras. */
+    static final String AUDIENCIA_ACCESO_ONBOARDING = "onboarding-api";
+    public static final String CLAIM_SESION = "sid";
 
     private final SecretKey key;
     private final String issuer;
@@ -114,7 +117,24 @@ public class JwtService {
         if (tokenIssuer == null || !emisoresConfiables.contains(tokenIssuer)) {
             throw new JwtException("Emisor JWT no confiable: " + tokenIssuer);
         }
+        // onboarding-clientes firma con el mismo secreto tokens de refresco y de desafio MFA: solo el de
+        // acceso (audiencia onboarding-api, ligado a una sesion) autentica. Sin esta verificacion un token
+        // obtenido solo con la contrasena, antes del segundo factor, serviria aqui.
+        if (esDeOnboarding(claims)) {
+            Set<String> audiencia = claims.getAudience();
+            if (audiencia == null || !audiencia.contains(AUDIENCIA_ACCESO_ONBOARDING)) {
+                throw new JwtException("El token de onboarding no es un token de acceso");
+            }
+            String sid = claims.get(CLAIM_SESION, String.class);
+            if (sid == null || sid.isBlank()) {
+                throw new JwtException("El token de onboarding no esta ligado a una sesion");
+            }
+        }
         return claims;
+    }
+
+    public boolean esDeOnboarding(Claims claims) {
+        return EMISOR_ONBOARDING_DEFECTO.equals(claims.getIssuer());
     }
 
     /**

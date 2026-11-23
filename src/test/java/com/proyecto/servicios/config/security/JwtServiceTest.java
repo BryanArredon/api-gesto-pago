@@ -66,25 +66,49 @@ class JwtServiceTest {
 
     @Test
     void aceptaTokenEmitidoPorOnboardingClientesYExtraeCorreoYRol() {
-        JwtService emisorOnboarding = new JwtService(SECRET, "onboarding-clientes", 15);
         JwtService receptorGestoPago = new JwtService(SECRET, "prueba-servicios", 15);
 
-        String tokenOnboarding = io.jsonwebtoken.Jwts.builder()
-                .issuer("onboarding-clientes")
-                .subject(java.util.UUID.randomUUID().toString())
-                .claim("clienteId", java.util.UUID.randomUUID().toString())
-                .claim("correo", "Cliente.Banco@UTNG.edu.mx")
-                .claim("rol", "CLIENTE")
-                .issuedAt(new java.util.Date())
-                .expiration(new java.util.Date(System.currentTimeMillis() + 60_000L))
-                .signWith(io.jsonwebtoken.security.Keys.hmacShaKeyFor(
-                        SECRET.getBytes(java.nio.charset.StandardCharsets.UTF_8)))
-                .compact();
+        String tokenOnboarding = tokenOnboarding("onboarding-api", java.util.UUID.randomUUID().toString());
 
         Claims claims = receptorGestoPago.validarAccessToken(tokenOnboarding);
         assertNotNull(claims);
         assertEquals("cliente.banco@utng.edu.mx", receptorGestoPago.extraerEmail(claims));
         assertEquals(List.of("ROLE_CLIENTE"), receptorGestoPago.extraerRoles(claims));
+        assertTrue(receptorGestoPago.esDeOnboarding(claims));
+    }
+
+    @Test
+    void rechazaTokenDeRefrescoODesafioMfaDeOnboarding() {
+        JwtService receptor = new JwtService(SECRET, "prueba-servicios", 15);
+        String sid = java.util.UUID.randomUUID().toString();
+
+        // Mismo emisor y misma firma, pero no son tokens de acceso: no deben autenticar aqui.
+        assertThrows(JwtException.class, () -> receptor.validarAccessToken(tokenOnboarding("onboarding-api-refresh", sid)));
+        assertThrows(JwtException.class, () -> receptor.validarAccessToken(tokenOnboarding("onboarding-mfa", sid)));
+    }
+
+    @Test
+    void rechazaTokenDeOnboardingSinSesion() {
+        JwtService receptor = new JwtService(SECRET, "prueba-servicios", 15);
+        assertThrows(JwtException.class, () -> receptor.validarAccessToken(tokenOnboarding("onboarding-api", null)));
+    }
+
+    private static String tokenOnboarding(String audiencia, String sid) {
+        var builder = io.jsonwebtoken.Jwts.builder()
+                .issuer("onboarding-clientes")
+                .audience().add(audiencia).and()
+                .subject(java.util.UUID.randomUUID().toString())
+                .claim("clienteId", java.util.UUID.randomUUID().toString())
+                .claim("correo", "Cliente.Banco@UTNG.edu.mx")
+                .claim("rol", "CLIENTE")
+                .issuedAt(new java.util.Date())
+                .expiration(new java.util.Date(System.currentTimeMillis() + 60_000L));
+        if (sid != null) {
+            builder.claim("sid", sid);
+        }
+        return builder.signWith(io.jsonwebtoken.security.Keys.hmacShaKeyFor(
+                        SECRET.getBytes(java.nio.charset.StandardCharsets.UTF_8)))
+                .compact();
     }
 
     private Usuario usuario() {

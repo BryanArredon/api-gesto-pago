@@ -1,5 +1,6 @@
 package com.proyecto.servicios.config.security;
 
+import com.proyecto.servicios.service.security.VerificadorSesionOnboarding;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtException;
 import jakarta.servlet.FilterChain;
@@ -25,9 +26,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private static final String BEARER = "Bearer ";
 
     private final JwtService jwtService;
+    private final VerificadorSesionOnboarding verificadorSesion;
 
-    public JwtAuthenticationFilter(JwtService jwtService) {
+    public JwtAuthenticationFilter(JwtService jwtService, VerificadorSesionOnboarding verificadorSesion) {
         this.jwtService = jwtService;
+        this.verificadorSesion = verificadorSesion;
     }
 
     @Override
@@ -38,6 +41,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             String token = header.substring(BEARER.length());
             try {
                 Claims claims = jwtService.validarAccessToken(token);
+                // Sesion centralizada: un token de una sesion cerrada o reemplazada ya no autentica aqui.
+                if (jwtService.esDeOnboarding(claims)
+                        && !verificadorSesion.esVigente(claims.get(JwtService.CLAIM_SESION, String.class), token)) {
+                    throw new JwtException("La sesion del token ya no esta vigente");
+                }
                 String emailPrincipal = jwtService.extraerEmail(claims);
                 List<SimpleGrantedAuthority> authorities = jwtService.extraerRoles(claims).stream()
                         .map(SimpleGrantedAuthority::new)
