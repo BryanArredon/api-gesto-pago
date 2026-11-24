@@ -3,12 +3,15 @@ package com.proyecto.servicios.service.impl;
 import com.proyecto.servicios.entity.pago.EstadoTransaccion;
 import com.proyecto.servicios.entity.pago.EventoTransaccion;
 import com.proyecto.servicios.entity.pago.Transaccion;
+import com.proyecto.servicios.evento.MovimientoRegistradoEvent;
 import com.proyecto.servicios.exception.ApiException;
 import com.proyecto.servicios.model.CatalogoProductoCache;
 import com.proyecto.servicios.model.idempotencia.ClaveIdempotencia;
 import com.proyecto.servicios.repositorys.pago.EventoTransaccionRepository;
 import com.proyecto.servicios.repositorys.pago.TransaccionRepository;
 import com.proyecto.servicios.service.BloqueoIdempotencia;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -32,6 +35,9 @@ public class TransaccionPersistenciaService {
     private final TransaccionRepository transaccionRepository;
     private final EventoTransaccionRepository eventoTransaccionRepository;
     private final BloqueoIdempotencia bloqueoIdempotencia;
+
+    @Autowired(required = false)
+    private ApplicationEventPublisher eventPublisher;
 
     public TransaccionPersistenciaService(
             TransaccionRepository transaccionRepository,
@@ -89,11 +95,13 @@ public class TransaccionPersistenciaService {
         tx.setComision(comision);
         tx.setEstado(EstadoTransaccion.PENDIENTE);
         tx.setErrorMensaje(null);
+        tx.setCodigoErrorGestoPago(null);
+        tx.setMotivoRechazo(null);
         tx.setIntentosConfirmacion(0);
         tx.setProximaConfirmacionEn(null);
 
         Transaccion guardada = transaccionRepository.save(tx);
-        registrarEvento(guardada.getId(), EstadoTransaccion.PENDIENTE, "API",
+        registrarEvento(guardada, EstadoTransaccion.PENDIENTE, "API",
                 "Intencion de pago validada y registrada en estado PENDIENTE");
         return new ResultadoPreparacion(guardada, false);
     }
@@ -106,7 +114,7 @@ public class TransaccionPersistenciaService {
         tx.setProximaConfirmacionEn(expiraEn);
         Transaccion guardada = transaccionRepository.save(tx);
         registrarEvento(
-                guardada.getId(),
+                guardada,
                 EstadoTransaccion.RETENIDO,
                 "ONBOARDING_BANCO",
                 "Saldo retenido atomicamente con folio " + folioRetencion);
@@ -140,10 +148,12 @@ public class TransaccionPersistenciaService {
             tx.setFecha(fechaProveedor);
         }
         tx.setErrorMensaje(null);
+        tx.setCodigoErrorGestoPago(null);
+        tx.setMotivoRechazo(null);
         tx.setProximaConfirmacionEn(null);
         tx.setEstado(EstadoTransaccion.LIQUIDADO);
         Transaccion guardada = transaccionRepository.save(tx);
-        registrarEvento(guardada.getId(), EstadoTransaccion.LIQUIDADO, origen, detalle);
+        registrarEvento(guardada, EstadoTransaccion.LIQUIDADO, origen, detalle);
         return guardada;
     }
 
@@ -154,14 +164,33 @@ public class TransaccionPersistenciaService {
             int intentosRealizados,
             Instant proximaConfirmacionEn,
             String origen) {
+        return programarConfirmacionEnProceso(
+                transaccionId, null, mensajeIncertidumbre, mensajeIncertidumbre, intentosRealizados, proximaConfirmacionEn, origen);
+    }
+
+    @Transactional
+    public Transaccion programarConfirmacionEnProceso(
+            Long transaccionId,
+            String codigoErrorGestoPago,
+            String motivoRechazo,
+            String detalleError,
+            int intentosRealizados,
+            Instant proximaConfirmacionEn,
+            String origen) {
         Transaccion tx = obtenerOExcepcion(transaccionId);
         tx.setEstado(EstadoTransaccion.EN_PROCESO);
-        tx.setErrorMensaje(mensajeIncertidumbre);
+        tx.setErrorMensaje(detalleError != null ? detalleError : motivoRechazo);
+        if (codigoErrorGestoPago != null) {
+            tx.setCodigoErrorGestoPago(codigoErrorGestoPago);
+        }
+        if (motivoRechazo != null) {
+            tx.setMotivoRechazo(motivoRechazo);
+        }
         tx.setIntentosConfirmacion(intentosRealizados);
         tx.setProximaConfirmacionEn(proximaConfirmacionEn);
         Transaccion guardada = transaccionRepository.save(tx);
         registrarEvento(
-                guardada.getId(),
+                guardada,
                 EstadoTransaccion.EN_PROCESO,
                 origen,
                 "Resultado incierto (saldo protegido en RETENIDO); confirmTx programado para " + proximaConfirmacionEn);
@@ -170,37 +199,85 @@ public class TransaccionPersistenciaService {
 
     @Transactional
     public Transaccion iniciarReverso(Long transaccionId, String motivo, String origen) {
+        return iniciarReverso(transaccionId, null, motivo, motivo, origen);
+    }
+
+    @Transactional
+    public Transaccion iniciarReverso(
+            Long transaccionId,
+            String codigoErrorGestoPago,
+            String motivoRechazo,
+            String detalleError,
+            String origen) {
         Transaccion tx = obtenerOExcepcion(transaccionId);
         tx.setEstado(EstadoTransaccion.REVERSANDO);
-        tx.setErrorMensaje(motivo);
+        tx.setErrorMensaje(detalleError != null ? detalleError : motivoRechazo);
+        if (codigoErrorGestoPago != null) {
+            tx.setCodigoErrorGestoPago(codigoErrorGestoPago);
+        }
+        if (motivoRechazo != null) {
+            tx.setMotivoRechazo(motivoRechazo);
+        }
         Transaccion guardada = transaccionRepository.save(tx);
-        registrarEvento(guardada.getId(), EstadoTransaccion.REVERSANDO, origen, motivo);
+        registrarEvento(guardada, EstadoTransaccion.REVERSANDO, origen, detalleError != null ? detalleError : motivoRechazo);
         return guardada;
     }
 
     @Transactional
     public Transaccion completarReverso(Long transaccionId, String motivo, String origen) {
+        return completarReverso(transaccionId, null, motivo, motivo, origen);
+    }
+
+    @Transactional
+    public Transaccion completarReverso(
+            Long transaccionId,
+            String codigoErrorGestoPago,
+            String motivoRechazo,
+            String detalleError,
+            String origen) {
         Transaccion tx = obtenerOExcepcion(transaccionId);
         tx.setEstado(EstadoTransaccion.REVERSADO);
-        tx.setErrorMensaje(motivo);
+        tx.setErrorMensaje(detalleError != null ? detalleError : motivoRechazo);
+        if (codigoErrorGestoPago != null) {
+            tx.setCodigoErrorGestoPago(codigoErrorGestoPago);
+        }
+        if (motivoRechazo != null) {
+            tx.setMotivoRechazo(motivoRechazo);
+        }
         tx.setProximaConfirmacionEn(null);
         Transaccion guardada = transaccionRepository.save(tx);
         registrarEvento(
-                guardada.getId(),
+                guardada,
                 EstadoTransaccion.REVERSADO,
                 origen,
-                "Reverso compensatorio aplicado en cuenta bancaria: " + motivo);
+                "Reverso compensatorio aplicado en cuenta bancaria: " + (motivoRechazo != null ? motivoRechazo : detalleError));
         return guardada;
     }
 
     @Transactional
     public Transaccion marcarRequiereRevision(Long transaccionId, String motivo, String origen) {
+        return marcarRequiereRevision(transaccionId, null, motivo, motivo, origen);
+    }
+
+    @Transactional
+    public Transaccion marcarRequiereRevision(
+            Long transaccionId,
+            String codigoErrorGestoPago,
+            String motivoRechazo,
+            String detalleError,
+            String origen) {
         Transaccion tx = obtenerOExcepcion(transaccionId);
         tx.setEstado(EstadoTransaccion.REQUIERE_REVISION);
-        tx.setErrorMensaje(motivo);
+        tx.setErrorMensaje(detalleError != null ? detalleError : motivoRechazo);
+        if (codigoErrorGestoPago != null) {
+            tx.setCodigoErrorGestoPago(codigoErrorGestoPago);
+        }
+        if (motivoRechazo != null) {
+            tx.setMotivoRechazo(motivoRechazo);
+        }
         tx.setProximaConfirmacionEn(null);
         Transaccion guardada = transaccionRepository.save(tx);
-        registrarEvento(guardada.getId(), EstadoTransaccion.REQUIERE_REVISION, origen, motivo);
+        registrarEvento(guardada, EstadoTransaccion.REQUIERE_REVISION, origen, detalleError != null ? detalleError : motivoRechazo);
         return guardada;
     }
 
@@ -209,13 +286,29 @@ public class TransaccionPersistenciaService {
                 .orElseThrow(() -> new IllegalStateException("Transaccion inexistente id=" + id));
     }
 
-    private void registrarEvento(Long transaccionId, EstadoTransaccion estado, String origen, String detalle) {
+    private void registrarEvento(Transaccion transaccion, EstadoTransaccion estado, String origen, String detalle) {
         EventoTransaccion evento = new EventoTransaccion();
-        evento.setTransaccionId(transaccionId);
+        evento.setTransaccionId(transaccion.getId());
         evento.setEstado(estado);
         evento.setOrigen(origen);
         evento.setDetalle(detalle);
         eventoTransaccionRepository.save(evento);
+        if (eventPublisher != null) {
+            eventPublisher.publishEvent(new MovimientoRegistradoEvent(
+                    transaccion.getId(),
+                    transaccion.getUsuarioId(),
+                    estado,
+                    origen,
+                    detalle,
+                    transaccion.getMonto(),
+                    transaccion.getComision(),
+                    transaccion.getServicio(),
+                    transaccion.getProducto(),
+                    transaccion.getReferencia(),
+                    transaccion.getCodigoErrorGestoPago(),
+                    transaccion.getMotivoRechazo(),
+                    transaccion.getErrorMensaje()));
+        }
     }
 
     public static String derivarUpc(String idempotencyKey) {

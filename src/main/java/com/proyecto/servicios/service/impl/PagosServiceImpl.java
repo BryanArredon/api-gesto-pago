@@ -23,6 +23,7 @@ import com.proyecto.servicios.service.GestoPagoTokenService;
 import com.proyecto.servicios.service.PagosService;
 import com.proyecto.servicios.service.ServicioRetencionBancaria;
 import com.proyecto.servicios.service.impl.TransaccionPersistenciaService.ResultadoPreparacion;
+import com.proyecto.servicios.util.GestoPagoErrorMapper;
 import com.proyecto.servicios.util.ValidadorLuhn;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -349,15 +350,25 @@ public class PagosServiceImpl implements PagosService {
                     mensaje == null ? "Operacion realizada con exito" : texto);
         }
         if (CODIGO_TIMEOUT.equals(codigo)) {
+            GestoPagoErrorMapper.ErrorGestoPago errorTimeout = GestoPagoErrorMapper.mapear(codigo, texto);
             Instant proximaConfirmacion = clock.instant().plus(esperaConfirmacion);
             return persistencia.programarConfirmacionEnProceso(
                     transaccion.getId(),
-                    texto,
+                    errorTimeout.codigo(),
+                    errorTimeout.explicacionAmigable(),
+                    errorTimeout.textoOriginal(),
                     0,
                     proximaConfirmacion,
                     ORIGEN_PROVEEDOR);
         }
-        return reversarPorRechazoDefinitivo(transaccion, emailTitular, texto, ORIGEN_PROVEEDOR);
+        GestoPagoErrorMapper.ErrorGestoPago errorMapeado = GestoPagoErrorMapper.mapear(codigo, texto);
+        return reversarPorRechazoDefinitivo(
+                transaccion,
+                emailTitular,
+                errorMapeado.codigo(),
+                errorMapeado.explicacionAmigable(),
+                errorMapeado.textoOriginal(),
+                ORIGEN_PROVEEDOR);
     }
 
     private Transaccion resolverResultadoConfirmTx(
@@ -374,12 +385,19 @@ public class PagosServiceImpl implements PagosService {
             return liquidarTransaccionAprobada(transaccion, emailTitular, respuesta, origen, texto);
         }
         if (CODIGO_TIMEOUT.equals(codigo)) {
-            return manejarConfirmacionIncierta(transaccion, emailTitular, intentoActual, texto, origen);
+            return manejarConfirmacionIncierta(transaccion, emailTitular, intentoActual, codigo, texto, origen);
         }
         if (CODIGO_NO_APLICADA.equals(codigo) || codigo != null) {
-            return reversarPorRechazoDefinitivo(transaccion, emailTitular, texto, origen);
+            GestoPagoErrorMapper.ErrorGestoPago errorMapeado = GestoPagoErrorMapper.mapear(codigo, texto);
+            return reversarPorRechazoDefinitivo(
+                    transaccion,
+                    emailTitular,
+                    errorMapeado.codigo(),
+                    errorMapeado.explicacionAmigable(),
+                    errorMapeado.textoOriginal(),
+                    origen);
         }
-        return manejarConfirmacionIncierta(transaccion, emailTitular, intentoActual, texto, origen);
+        return manejarConfirmacionIncierta(transaccion, emailTitular, intentoActual, null, texto, origen);
     }
 
     private Transaccion liquidarTransaccionAprobada(
@@ -410,16 +428,31 @@ public class PagosServiceImpl implements PagosService {
 
     private Transaccion reversarPorRechazoDefinitivo(
             Transaccion transaccion, String emailTitular, String motivo, String origen) {
-        persistencia.iniciarReverso(transaccion.getId(), motivo, origen);
+        GestoPagoErrorMapper.ErrorGestoPago err = GestoPagoErrorMapper.mapear(null, motivo);
+        return reversarPorRechazoDefinitivo(
+                transaccion, emailTitular, err.codigo(), err.explicacionAmigable(), err.textoOriginal(), origen);
+    }
+
+    private Transaccion reversarPorRechazoDefinitivo(
+            Transaccion transaccion,
+            String emailTitular,
+            String codigoGestoPago,
+            String motivoAmigable,
+            String textoOriginal,
+            String origen) {
+        persistencia.iniciarReverso(
+                transaccion.getId(), codigoGestoPago, motivoAmigable, textoOriginal, origen);
         boolean reversado = servicioRetencionBancaria.reversarRetencionConReintento(
-                emailTitular, transaccion.getFolioRetencion(), motivo);
+                emailTitular, transaccion.getFolioRetencion(), motivoAmigable);
         if (reversado) {
-            return persistencia.completarReverso(transaccion.getId(), motivo, origen);
+            return persistencia.completarReverso(
+                    transaccion.getId(), codigoGestoPago, motivoAmigable, textoOriginal, origen);
         }
-        String detalleRevision = "Fallo al reversar hold bancario tras rechazo del proveedor: " + motivo;
+        String detalleRevision = "Fallo al reversar hold bancario tras rechazo del proveedor: " + textoOriginal;
         servicioRetencionBancaria.marcarParaRevision(
                 emailTitular, transaccion.getFolioRetencion(), detalleRevision);
-        return persistencia.marcarRequiereRevision(transaccion.getId(), detalleRevision, origen);
+        return persistencia.marcarRequiereRevision(
+                transaccion.getId(), codigoGestoPago, motivoAmigable, detalleRevision, origen);
     }
 
     private Transaccion manejarConfirmacionIncierta(
@@ -428,17 +461,29 @@ public class PagosServiceImpl implements PagosService {
             int intentoActual,
             String motivo,
             String origen) {
+        return manejarConfirmacionIncierta(transaccion, emailTitular, intentoActual, null, motivo, origen);
+    }
+
+    private Transaccion manejarConfirmacionIncierta(
+            Transaccion transaccion,
+            String emailTitular,
+            int intentoActual,
+            String codigoGestoPago,
+            String motivo,
+            String origen) {
+        GestoPagoErrorMapper.ErrorGestoPago err = GestoPagoErrorMapper.mapear(codigoGestoPago, motivo);
         if (intentoActual >= MAX_INTENTOS_CONFIRMACION) {
             String detalleRevision =
                     "Operacion indeterminada tras " + intentoActual + " intentos de confirmTx: " + motivo;
             servicioRetencionBancaria.marcarParaRevision(
                     emailTitular, transaccion.getFolioRetencion(), detalleRevision);
-            return persistencia.marcarRequiereRevision(transaccion.getId(), detalleRevision, origen);
+            return persistencia.marcarRequiereRevision(
+                    transaccion.getId(), err.codigo(), err.explicacionAmigable(), detalleRevision, origen);
         }
         Duration esperaSiguiente = intentoActual == 1 ? SEGUNDO_ESCALON_CONFIRMACION : TERCER_ESCALON_CONFIRMACION;
         Instant proximaConfirmacion = clock.instant().plus(esperaSiguiente);
         return persistencia.programarConfirmacionEnProceso(
-                transaccion.getId(), motivo, intentoActual, proximaConfirmacion, origen);
+                transaccion.getId(), err.codigo(), err.explicacionAmigable(), motivo, intentoActual, proximaConfirmacion, origen);
     }
 
     private void validarSolicitudEntrada(PagoRequestDto request) {

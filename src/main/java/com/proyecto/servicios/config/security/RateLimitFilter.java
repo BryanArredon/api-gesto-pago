@@ -33,7 +33,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
             "/auth/login", "/auth/refresh",
             "/v3/api-docs", "/swagger-ui", "/logo.jpeg", "/favicon.png",
             "/custom-swagger.css", "/custom-swagger.js",
-            "/actuator/health", "/error");
+            "/actuator/health", "/error", "/interno");
 
     private final ResilientRateLimiter rateLimiter;
     private final ObjectMapper objectMapper;

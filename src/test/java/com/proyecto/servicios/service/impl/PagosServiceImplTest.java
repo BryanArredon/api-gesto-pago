@@ -529,6 +529,9 @@ class PagosServiceImplTest {
 
         assertEquals("REVERSADO", dto.getEstado());
         assertTrue(dto.getErrorMensaje().contains("carrier no responde"));
+        assertEquals("03", dto.getCodigoErrorGestoPago());
+        assertNotNull(dto.getMotivoRechazo());
+        assertTrue(dto.getMotivoRechazo().toLowerCase().contains("carrier"));
         verify(servicioRetencionBancaria).reversarRetencionConReintento(
                 eq("cliente@banco.mx"),
                 eq(FOLIO_RETENCION),
@@ -627,6 +630,8 @@ class PagosServiceImplTest {
 
         assertEquals("REVERSADO", dto.getEstado());
         assertTrue(dto.getErrorMensaje().contains("no fue aplicada"));
+        assertEquals("70", dto.getCodigoErrorGestoPago());
+        assertNotNull(dto.getMotivoRechazo());
         verify(servicioRetencionBancaria).reversarRetencionConReintento(
                 eq("cliente@banco.mx"),
                 eq(FOLIO_RETENCION),
@@ -649,6 +654,8 @@ class PagosServiceImplTest {
 
         assertEquals("REVERSADO", dto.getEstado());
         assertEquals("Dispositivo no registrado", dto.getErrorMensaje());
+        assertEquals("51", dto.getCodigoErrorGestoPago());
+        assertNotNull(dto.getMotivoRechazo());
     }
 
     @Test

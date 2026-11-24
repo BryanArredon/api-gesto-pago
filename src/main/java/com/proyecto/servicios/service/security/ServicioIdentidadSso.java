@@ -50,7 +50,15 @@ public class ServicioIdentidadSso {
         if (authentication == null || authentication.getName() == null || authentication.getName().isBlank()) {
             throw ApiException.noAutenticado();
         }
-        String email = authentication.getName().trim().toLowerCase(Locale.ROOT);
+        return obtenerOCrearUsuarioIdPorEmail(authentication.getName());
+    }
+
+    @Transactional
+    public Long obtenerOCrearUsuarioIdPorEmail(String correo) {
+        if (correo == null || correo.isBlank()) {
+            throw ApiException.noAutenticado();
+        }
+        String email = correo.trim().toLowerCase(Locale.ROOT);
         Optional<Usuario> existente = usuarioRepository.findByEmail(email);
         if (existente.isPresent()) {
             Usuario usuario = existente.get();

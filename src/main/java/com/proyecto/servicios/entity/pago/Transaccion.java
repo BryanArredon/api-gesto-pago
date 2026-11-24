@@ -88,6 +88,12 @@ public class Transaccion {
     @Column(name = "error_mensaje", columnDefinition = "TEXT")
     private String errorMensaje;
 
+    @Column(name = "codigo_error_gesto_pago", length = 50)
+    private String codigoErrorGestoPago;
+
+    @Column(name = "motivo_rechazo", columnDefinition = "TEXT")
+    private String motivoRechazo;
+
     @Column(name = "intentos_confirmacion", nullable = false)
     private int intentosConfirmacion;
 

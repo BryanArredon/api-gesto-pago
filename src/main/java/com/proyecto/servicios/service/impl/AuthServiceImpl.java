@@ -4,6 +4,8 @@ import com.proyecto.servicios.config.security.JwtService;
 import com.proyecto.servicios.entity.auth.RefreshToken;
 import com.proyecto.servicios.entity.auth.Rol;
 import com.proyecto.servicios.entity.auth.Usuario;
+import com.proyecto.servicios.entity.notificacion.TipoNotificacion;
+import com.proyecto.servicios.evento.NotificacionSolicitadaEvent;
 import com.proyecto.servicios.exception.ApiException;
 import com.proyecto.servicios.model.auth.LoginRequest;
 import com.proyecto.servicios.model.auth.RefreshRequest;
@@ -14,7 +16,9 @@ import com.proyecto.servicios.repositorys.auth.RolRepository;
 import com.proyecto.servicios.repositorys.auth.UsuarioRepository;
 import com.proyecto.servicios.service.AuthService;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,6 +26,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
@@ -36,6 +41,9 @@ public class AuthServiceImpl implements AuthService {
     private final JwtService jwtService;
     private final long refreshTtlDays;
     private final String dummyPasswordHash;
+
+    @Autowired(required = false)
+    private ApplicationEventPublisher eventPublisher;
 
     public AuthServiceImpl(UsuarioRepository usuarioRepository,
                            RefreshTokenRepository refreshTokenRepository,
@@ -72,6 +80,9 @@ public class AuthServiceImpl implements AuthService {
         String access = jwtService.generarAccessToken(usuario);
         String refresh = guardarRefreshToken(usuario);
         log.info("Login exitoso email={}", usuario.getEmail());
+        solicitarNotificacion(usuario.getEmail(), "Inicio de sesion",
+                "Se inicio sesion en tu cuenta de Gesto Pago. Si no fuiste tu, cambia tu contrasena.",
+                Map.of("canal", "API"), "auth:login:" + UUID.randomUUID());
         return TokenResponse.ok(access, refresh, jwtService.getAccessTtlSegundos(),
                 usuario.getNombre(), roles(usuario));
     }
@@ -98,6 +109,9 @@ public class AuthServiceImpl implements AuthService {
         String access = jwtService.generarAccessToken(usuario);
         String refresh = guardarRefreshToken(usuario);
         log.info("Registro exitoso email={}", email);
+        solicitarNotificacion(email, "Bienvenido a Gesto Pago",
+                "Tu cuenta fue creada correctamente. Ya puedes comenzar a usar Gesto Pago.",
+                Map.of("evento", "registro"), "auth:registro:" + usuario.getId());
         return TokenResponse.ok(access, refresh, jwtService.getAccessTtlSegundos(),
                 usuario.getNombre(), roles(usuario));
     }
@@ -149,6 +163,15 @@ public class AuthServiceImpl implements AuthService {
         token.setCreatedAt(Instant.now());
         refreshTokenRepository.save(token);
         return raw;
+    }
+
+    private void solicitarNotificacion(
+            String email, String titulo, String cuerpo, Map<String, Object> datos, String dedupeKey) {
+        if (eventPublisher == null) {
+            return;
+        }
+        eventPublisher.publishEvent(new NotificacionSolicitadaEvent(
+                email, TipoNotificacion.SEGURIDAD, titulo, cuerpo, datos, dedupeKey, true));
     }
 
     private List<String> roles(Usuario usuario) {

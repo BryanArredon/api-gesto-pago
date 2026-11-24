@@ -39,6 +39,8 @@ public class TransaccionDto {
     private String pin;
     private String legend;
     private String errorMensaje;
+    private String codigoErrorGestoPago;
+    private String motivoRechazo;
     private String fecha;
 
     public static TransaccionDto from(Transaccion tx) {
@@ -61,6 +63,8 @@ public class TransaccionDto {
         dto.setPin(tx.getPin());
         dto.setLegend(tx.getLegend());
         dto.setErrorMensaje(tx.getErrorMensaje());
+        dto.setCodigoErrorGestoPago(tx.getCodigoErrorGestoPago());
+        dto.setMotivoRechazo(tx.getMotivoRechazo());
         dto.setFecha(fecha(tx.getFecha()));
         return dto;
     }
